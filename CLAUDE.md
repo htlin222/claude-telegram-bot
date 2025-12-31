@@ -1,111 +1,91 @@
----
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
----
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Commands
 
-## APIs
-
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
-
-## Testing
-
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```bash
+bun run start      # Run the bot
+bun run dev        # Run with auto-reload (--watch)
+bun run typecheck  # Run TypeScript type checking
+bun install        # Install dependencies
 ```
 
-## Frontend
+## Architecture
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+This is a Telegram bot (~3,300 lines TypeScript) that lets you control Claude Code from your phone via text, voice, photos, and documents. Built with Bun and grammY.
 
-Server:
+### Message Flow
 
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+```
+Telegram message → Handler → Auth check → Rate limit → Intent classification → Claude session → Streaming response → Audit log
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+### Key Modules
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
+- **`src/index.ts`** - Entry point, registers handlers, starts polling
+- **`src/config.ts`** - Environment parsing, MCP loading, safety prompts
+- **`src/session.ts`** - `ClaudeSession` class wrapping Agent SDK V2 with streaming, session persistence (`/tmp/claude-telegram-session.json`), and defense-in-depth safety checks
+- **`src/security.ts`** - `RateLimiter` (token bucket), path validation, command safety checks, intent classification via claude CLI subprocess
+- **`src/formatting.ts`** - Markdown→HTML conversion for Telegram, tool status emoji formatting
+- **`src/utils.ts`** - Audit logging, voice transcription (OpenAI), typing indicators
+- **`src/types.ts`** - Shared TypeScript types
+
+### Handlers (`src/handlers/`)
+
+Each message type has a dedicated async handler:
+- **`commands.ts`** - `/start`, `/new`, `/stop`, `/status`, `/resume`, `/restart`
+- **`text.ts`** - Text messages with intent filtering
+- **`voice.ts`** - Voice→text via OpenAI, then same flow as text
+- **`photo.ts`** - Image analysis with media group buffering (1s timeout for albums)
+- **`document.ts`** - PDF extraction (pdf-parse) and text file processing
+- **`callback.ts`** - Inline keyboard button handling for ask_user MCP
+- **`streaming.ts`** - Shared `StreamingState` and status callback factory
+
+### Security Layers
+
+1. User allowlist (`TELEGRAM_ALLOWED_USERS`)
+2. Rate limiting (token bucket, configurable)
+3. Intent classification (Haiku via claude CLI)
+4. Path validation (`ALLOWED_PATHS`)
+5. Command safety (blocked patterns)
+6. System prompt constraints
+7. Audit logging
+
+### Configuration
+
+All config via `.env` (copy from `.env.example`). Key variables:
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` (required)
+- `CLAUDE_WORKING_DIR` - Working directory for Claude
+- `ALLOWED_PATHS` - Directories Claude can access
+- `OPENAI_API_KEY` - For voice transcription
+
+MCP servers defined in `mcp-config.ts`.
+
+### Runtime Files
+
+- `/tmp/claude-telegram-session.json` - Session persistence for `/resume`
+- `/tmp/telegram-bot/` - Downloaded photos/documents
+- `/tmp/claude-telegram-audit.log` - Audit log
+
+## Patterns
+
+**Adding a command**: Create handler in `commands.ts`, register in `index.ts` with `bot.command("name", handler)`
+
+**Adding a message handler**: Create in `handlers/`, export from `index.ts`, register in `index.ts` with appropriate filter
+
+**Streaming pattern**: All handlers use `createStatusCallback()` from `streaming.ts` and `session.sendMessageStreaming()` for live updates.
+
+**Type checking**: Run `bun run typecheck` periodically while editing TypeScript files. Fix any type errors before committing.
+
+## Running as Service (macOS)
+
+```bash
+cp launchagent/com.claude-telegram-ts.plist.template ~/Library/LaunchAgents/com.claude-telegram-ts.plist
+# Edit plist with your paths
+launchctl load ~/Library/LaunchAgents/com.claude-telegram-ts.plist
+
+# Logs
+tail -f /tmp/claude-telegram-bot-ts.log
+tail -f /tmp/claude-telegram-bot-ts.err
 ```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
