@@ -199,8 +199,8 @@ class ClaudeSession {
     const options: Options = {
       model: "claude-sonnet-4-5",
       cwd: WORKING_DIR,
-      settingSources: ["project" as const],
-      permissionMode: "bypassPermissions" as const,
+      settingSources: ["user", "project"],
+      permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       systemPrompt: SAFETY_PROMPT,
       mcpServers: MCP_SERVERS,
