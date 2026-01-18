@@ -79,11 +79,29 @@ class ClaudeSession {
 	lastUsage: TokenUsage | null = null;
 	lastMessage: string | null = null;
 
+	// Mutable working directory (can be changed with /cd)
+	private _workingDir: string = WORKING_DIR;
+
 	private abortController: AbortController | null = null;
 	private isQueryRunning = false;
 	private stopRequested = false;
 	private _isProcessing = false;
 	private _wasInterruptedByNewMessage = false;
+
+	get workingDir(): string {
+		return this._workingDir;
+	}
+
+	/**
+	 * Change the working directory for future sessions.
+	 * Clears the current session since directory changed.
+	 */
+	setWorkingDir(dir: string): void {
+		this._workingDir = dir;
+		// Clear session when changing directory
+		this.sessionId = null;
+		console.log(`Working directory changed to: ${dir}`);
+	}
 
 	get isActive(): boolean {
 		return this.sessionId !== null;
@@ -201,7 +219,7 @@ class ClaudeSession {
 		// Build SDK V1 options - supports all features
 		const options: Options = {
 			model: "claude-sonnet-4-5",
-			cwd: WORKING_DIR,
+			cwd: this._workingDir,
 			settingSources: ["user", "project"],
 			permissionMode: "bypassPermissions",
 			allowDangerouslySkipPermissions: true,
@@ -490,7 +508,7 @@ class ClaudeSession {
 			const data: SessionData = {
 				session_id: this.sessionId,
 				saved_at: new Date().toISOString(),
-				working_dir: WORKING_DIR,
+				working_dir: this._workingDir,
 			};
 			Bun.write(SESSION_FILE, JSON.stringify(data));
 			console.log(`Session saved to ${SESSION_FILE}`);
@@ -516,7 +534,7 @@ class ClaudeSession {
 				return [false, "Saved session file is empty"];
 			}
 
-			if (data.working_dir && data.working_dir !== WORKING_DIR) {
+			if (data.working_dir && data.working_dir !== this._workingDir) {
 				return [
 					false,
 					`Session was for different directory: ${data.working_dir}`,

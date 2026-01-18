@@ -4,23 +4,30 @@
  * Control Claude Code from your phone via Telegram.
  */
 
-import { Bot } from "grammy";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { run, sequentialize } from "@grammyjs/runner";
-import { TELEGRAM_TOKEN, WORKING_DIR, ALLOWED_USERS, RESTART_FILE } from "./config";
-import { unlinkSync, readFileSync, existsSync } from "fs";
+import { Bot } from "grammy";
 import {
-  handleStart,
-  handleNew,
-  handleStop,
-  handleStatus,
-  handleResume,
-  handleRestart,
-  handleRetry,
-  handleText,
-  handleVoice,
-  handlePhoto,
-  handleDocument,
-  handleCallback,
+	ALLOWED_USERS,
+	RESTART_FILE,
+	TELEGRAM_TOKEN,
+	WORKING_DIR,
+} from "./config";
+import {
+	handleBookmarks,
+	handleCallback,
+	handleCd,
+	handleDocument,
+	handleNew,
+	handlePhoto,
+	handleRestart,
+	handleResume,
+	handleRetry,
+	handleStart,
+	handleStatus,
+	handleStop,
+	handleText,
+	handleVoice,
 } from "./handlers";
 
 // Create bot instance
@@ -29,22 +36,22 @@ const bot = new Bot(TELEGRAM_TOKEN);
 // Sequentialize non-command messages per user (prevents race conditions)
 // Commands bypass sequentialization so they work immediately
 bot.use(
-  sequentialize((ctx) => {
-    // Commands are not sequentialized - they work immediately
-    if (ctx.message?.text?.startsWith("/")) {
-      return undefined;
-    }
-    // Messages with ! prefix bypass queue (interrupt)
-    if (ctx.message?.text?.startsWith("!")) {
-      return undefined;
-    }
-    // Callback queries (button clicks) are not sequentialized
-    if (ctx.callbackQuery) {
-      return undefined;
-    }
-    // Other messages are sequentialized per chat
-    return ctx.chat?.id.toString();
-  })
+	sequentialize((ctx) => {
+		// Commands are not sequentialized - they work immediately
+		if (ctx.message?.text?.startsWith("/")) {
+			return undefined;
+		}
+		// Messages with ! prefix bypass queue (interrupt)
+		if (ctx.message?.text?.startsWith("!")) {
+			return undefined;
+		}
+		// Callback queries (button clicks) are not sequentialized
+		if (ctx.callbackQuery) {
+			return undefined;
+		}
+		// Other messages are sequentialized per chat
+		return ctx.chat?.id.toString();
+	}),
 );
 
 // ============== Command Handlers ==============
@@ -56,6 +63,8 @@ bot.command("status", handleStatus);
 bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
 bot.command("retry", handleRetry);
+bot.command("cd", handleCd);
+bot.command("bookmarks", handleBookmarks);
 
 // ============== Message Handlers ==============
 
@@ -78,7 +87,7 @@ bot.on("callback_query:data", handleCallback);
 // ============== Error Handler ==============
 
 bot.catch((err) => {
-  console.error("Bot error:", err);
+	console.error("Bot error:", err);
 });
 
 // ============== Startup ==============
@@ -96,23 +105,25 @@ console.log(`Bot started: @${botInfo.username}`);
 
 // Check for pending restart message to update
 if (existsSync(RESTART_FILE)) {
-  try {
-    const data = JSON.parse(readFileSync(RESTART_FILE, "utf-8"));
-    const age = Date.now() - data.timestamp;
+	try {
+		const data = JSON.parse(readFileSync(RESTART_FILE, "utf-8"));
+		const age = Date.now() - data.timestamp;
 
-    // Only update if restart was recent (within 30 seconds)
-    if (age < 30000 && data.chat_id && data.message_id) {
-      await bot.api.editMessageText(
-        data.chat_id,
-        data.message_id,
-        "✅ Bot restarted"
-      );
-    }
-    unlinkSync(RESTART_FILE);
-  } catch (e) {
-    console.warn("Failed to update restart message:", e);
-    try { unlinkSync(RESTART_FILE); } catch {}
-  }
+		// Only update if restart was recent (within 30 seconds)
+		if (age < 30000 && data.chat_id && data.message_id) {
+			await bot.api.editMessageText(
+				data.chat_id,
+				data.message_id,
+				"✅ Bot restarted",
+			);
+		}
+		unlinkSync(RESTART_FILE);
+	} catch (e) {
+		console.warn("Failed to update restart message:", e);
+		try {
+			unlinkSync(RESTART_FILE);
+		} catch {}
+	}
 }
 
 // Start with concurrent runner (commands work immediately)
@@ -120,20 +131,20 @@ const runner = run(bot);
 
 // Graceful shutdown
 const stopRunner = () => {
-  if (runner.isRunning()) {
-    console.log("Stopping bot...");
-    runner.stop();
-  }
+	if (runner.isRunning()) {
+		console.log("Stopping bot...");
+		runner.stop();
+	}
 };
 
 process.on("SIGINT", () => {
-  console.log("Received SIGINT");
-  stopRunner();
-  process.exit(0);
+	console.log("Received SIGINT");
+	stopRunner();
+	process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  console.log("Received SIGTERM");
-  stopRunner();
-  process.exit(0);
+	console.log("Received SIGTERM");
+	stopRunner();
+	process.exit(0);
 });
