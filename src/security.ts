@@ -4,73 +4,115 @@
  * Rate limiting, path validation, command safety.
  */
 
-import { resolve, normalize } from "path";
 import { realpathSync } from "fs";
-import type { RateLimitBucket } from "./types";
+import { normalize, resolve } from "path";
 import {
-  ALLOWED_PATHS,
-  BLOCKED_PATTERNS,
-  RATE_LIMIT_ENABLED,
-  RATE_LIMIT_REQUESTS,
-  RATE_LIMIT_WINDOW,
-  TEMP_PATHS,
+	ALLOWED_PATHS,
+	BLOCKED_PATTERNS,
+	RATE_LIMIT_ENABLED,
+	RATE_LIMIT_REQUESTS,
+	RATE_LIMIT_WINDOW,
+	TEMP_PATHS,
 } from "./config";
+import type { RateLimitBucket } from "./types";
 
 // ============== Rate Limiter ==============
 
+// Bucket expiration time (1 hour) - prevents unbounded memory growth
+const BUCKET_EXPIRATION_MS = 60 * 60 * 1000;
+// Cleanup interval (10 minutes)
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+
 class RateLimiter {
-  private buckets = new Map<number, RateLimitBucket>();
-  private maxTokens: number;
-  private refillRate: number; // tokens per second
+	private buckets = new Map<number, RateLimitBucket>();
+	private maxTokens: number;
+	private refillRate: number; // tokens per second
+	private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor() {
-    this.maxTokens = RATE_LIMIT_REQUESTS;
-    this.refillRate = RATE_LIMIT_REQUESTS / RATE_LIMIT_WINDOW;
-  }
+	constructor() {
+		this.maxTokens = RATE_LIMIT_REQUESTS;
+		this.refillRate = RATE_LIMIT_REQUESTS / RATE_LIMIT_WINDOW;
 
-  check(userId: number): [allowed: boolean, retryAfter?: number] {
-    if (!RATE_LIMIT_ENABLED) {
-      return [true];
-    }
+		// Start periodic cleanup
+		this.startCleanup();
+	}
 
-    const now = Date.now();
-    let bucket = this.buckets.get(userId);
+	/**
+	 * Start periodic cleanup of expired buckets.
+	 */
+	private startCleanup(): void {
+		this.cleanupTimer = setInterval(() => {
+			this.cleanupExpiredBuckets();
+		}, CLEANUP_INTERVAL_MS);
 
-    if (!bucket) {
-      bucket = { tokens: this.maxTokens, lastUpdate: now };
-      this.buckets.set(userId, bucket);
-    }
+		// Don't prevent process from exiting
+		if (this.cleanupTimer.unref) {
+			this.cleanupTimer.unref();
+		}
+	}
 
-    // Refill tokens based on time elapsed
-    const elapsed = (now - bucket.lastUpdate) / 1000;
-    bucket.tokens = Math.min(
-      this.maxTokens,
-      bucket.tokens + elapsed * this.refillRate
-    );
-    bucket.lastUpdate = now;
+	/**
+	 * Remove buckets that haven't been used recently.
+	 */
+	private cleanupExpiredBuckets(): void {
+		const now = Date.now();
+		let removed = 0;
 
-    if (bucket.tokens >= 1) {
-      bucket.tokens -= 1;
-      return [true];
-    }
+		for (const [userId, bucket] of this.buckets) {
+			if (now - bucket.lastUpdate > BUCKET_EXPIRATION_MS) {
+				this.buckets.delete(userId);
+				removed++;
+			}
+		}
 
-    // Calculate time until next token
-    const retryAfter = (1 - bucket.tokens) / this.refillRate;
-    return [false, retryAfter];
-  }
+		if (removed > 0) {
+			console.debug(`Rate limiter cleanup: removed ${removed} expired buckets`);
+		}
+	}
 
-  getStatus(userId: number): {
-    tokens: number;
-    max: number;
-    refillRate: number;
-  } {
-    const bucket = this.buckets.get(userId);
-    return {
-      tokens: bucket?.tokens ?? this.maxTokens,
-      max: this.maxTokens,
-      refillRate: this.refillRate,
-    };
-  }
+	check(userId: number): [allowed: boolean, retryAfter?: number] {
+		if (!RATE_LIMIT_ENABLED) {
+			return [true];
+		}
+
+		const now = Date.now();
+		let bucket = this.buckets.get(userId);
+
+		if (!bucket) {
+			bucket = { tokens: this.maxTokens, lastUpdate: now };
+			this.buckets.set(userId, bucket);
+		}
+
+		// Refill tokens based on time elapsed
+		const elapsed = (now - bucket.lastUpdate) / 1000;
+		bucket.tokens = Math.min(
+			this.maxTokens,
+			bucket.tokens + elapsed * this.refillRate,
+		);
+		bucket.lastUpdate = now;
+
+		if (bucket.tokens >= 1) {
+			bucket.tokens -= 1;
+			return [true];
+		}
+
+		// Calculate time until next token
+		const retryAfter = (1 - bucket.tokens) / this.refillRate;
+		return [false, retryAfter];
+	}
+
+	getStatus(userId: number): {
+		tokens: number;
+		max: number;
+		refillRate: number;
+	} {
+		const bucket = this.buckets.get(userId);
+		return {
+			tokens: bucket?.tokens ?? this.maxTokens,
+			max: this.maxTokens,
+			refillRate: this.refillRate,
+		};
+	}
 }
 
 export const rateLimiter = new RateLimiter();
@@ -78,90 +120,90 @@ export const rateLimiter = new RateLimiter();
 // ============== Path Validation ==============
 
 export function isPathAllowed(path: string): boolean {
-  try {
-    // Expand ~ and resolve to absolute path
-    const expanded = path.replace(/^~/, process.env.HOME || "");
-    const normalized = normalize(expanded);
+	try {
+		// Expand ~ and resolve to absolute path
+		const expanded = path.replace(/^~/, process.env.HOME || "");
+		const normalized = normalize(expanded);
 
-    // Try to resolve symlinks (may fail if path doesn't exist yet)
-    let resolved: string;
-    try {
-      resolved = realpathSync(normalized);
-    } catch {
-      resolved = resolve(normalized);
-    }
+		// Try to resolve symlinks (may fail if path doesn't exist yet)
+		let resolved: string;
+		try {
+			resolved = realpathSync(normalized);
+		} catch {
+			resolved = resolve(normalized);
+		}
 
-    // Always allow temp paths (for bot's own files)
-    for (const tempPath of TEMP_PATHS) {
-      if (resolved.startsWith(tempPath)) {
-        return true;
-      }
-    }
+		// Always allow temp paths (for bot's own files)
+		for (const tempPath of TEMP_PATHS) {
+			if (resolved.startsWith(tempPath)) {
+				return true;
+			}
+		}
 
-    // Check against allowed paths using proper containment
-    for (const allowed of ALLOWED_PATHS) {
-      const allowedResolved = resolve(allowed);
-      if (
-        resolved === allowedResolved ||
-        resolved.startsWith(allowedResolved + "/")
-      ) {
-        return true;
-      }
-    }
+		// Check against allowed paths using proper containment
+		for (const allowed of ALLOWED_PATHS) {
+			const allowedResolved = resolve(allowed);
+			if (
+				resolved === allowedResolved ||
+				resolved.startsWith(allowedResolved + "/")
+			) {
+				return true;
+			}
+		}
 
-    return false;
-  } catch {
-    return false;
-  }
+		return false;
+	} catch {
+		return false;
+	}
 }
 
 // ============== Command Safety ==============
 
 export function checkCommandSafety(
-  command: string
+	command: string,
 ): [safe: boolean, reason: string] {
-  const lowerCommand = command.toLowerCase();
+	const lowerCommand = command.toLowerCase();
 
-  // Check blocked patterns
-  for (const pattern of BLOCKED_PATTERNS) {
-    if (lowerCommand.includes(pattern.toLowerCase())) {
-      return [false, `Blocked pattern: ${pattern}`];
-    }
-  }
+	// Check blocked patterns
+	for (const pattern of BLOCKED_PATTERNS) {
+		if (lowerCommand.includes(pattern.toLowerCase())) {
+			return [false, `Blocked pattern: ${pattern}`];
+		}
+	}
 
-  // Special handling for rm commands - validate paths
-  if (lowerCommand.includes("rm ")) {
-    try {
-      // Simple parsing: extract arguments after rm
-      const rmMatch = command.match(/rm\s+(.+)/i);
-      if (rmMatch) {
-        const args = rmMatch[1]!.split(/\s+/);
-        for (const arg of args) {
-          // Skip flags
-          if (arg.startsWith("-") || arg.length <= 1) continue;
+	// Special handling for rm commands - validate paths
+	if (lowerCommand.includes("rm ")) {
+		try {
+			// Simple parsing: extract arguments after rm
+			const rmMatch = command.match(/rm\s+(.+)/i);
+			if (rmMatch) {
+				const args = rmMatch[1]!.split(/\s+/);
+				for (const arg of args) {
+					// Skip flags
+					if (arg.startsWith("-") || arg.length <= 1) continue;
 
-          // Check if path is allowed
-          if (!isPathAllowed(arg)) {
-            return [false, `rm target outside allowed paths: ${arg}`];
-          }
-        }
-      }
-    } catch {
-      // If parsing fails, be cautious
-      return [false, "Could not parse rm command for safety check"];
-    }
-  }
+					// Check if path is allowed
+					if (!isPathAllowed(arg)) {
+						return [false, `rm target outside allowed paths: ${arg}`];
+					}
+				}
+			}
+		} catch {
+			// If parsing fails, be cautious
+			return [false, "Could not parse rm command for safety check"];
+		}
+	}
 
-  return [true, ""];
+	return [true, ""];
 }
 
 // ============== Authorization ==============
 
 export function isAuthorized(
-  userId: number | undefined,
-  allowedUsers: number[]
+	userId: number | undefined,
+	allowedUsers: number[],
 ): boolean {
-  if (!userId) return false;
-  if (allowedUsers.length === 0) return false;
-  return allowedUsers.includes(userId);
+	if (!userId) return false;
+	if (allowedUsers.length === 0) return false;
+	return allowedUsers.includes(userId);
 }
