@@ -1,6 +1,8 @@
 # Claude Telegram Bot - Makefile
 # Usage: make <target>
 
+SHELL := /bin/bash
+
 PLIST_NAME := com.claude-telegram-ts
 PLIST_PATH := ~/Library/LaunchAgents/$(PLIST_NAME).plist
 PLIST_TEMPLATE := launchagent/$(PLIST_NAME).plist.template
@@ -78,7 +80,7 @@ start:
 	fi
 	@echo "Installing LaunchAgent..."
 	@mkdir -p ~/Library/LaunchAgents
-	@set -a && source .env && set +a && \
+	@export $$(grep -v '^#' .env | xargs) && \
 	sed -e "s|/Users/USERNAME/.bun/bin/bun|$$(command -v bun)|g" \
 	    -e "s|/Users/USERNAME/Dev/claude-telegram-bot-ts|$$(pwd)|g" \
 	    -e "s|<string>/Users/USERNAME/Dev</string>|<string>$${CLAUDE_WORKING_DIR:-$$(pwd)}</string>|g" \
