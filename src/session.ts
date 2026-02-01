@@ -25,6 +25,7 @@ import {
 	THINKING_KEYWORDS,
 	WORKING_DIR,
 } from "./config";
+import { botEvents } from "./events";
 import { formatToolStatus } from "./formatting";
 import { checkPendingAskUserRequests } from "./handlers/streaming";
 import { checkCommandSafety, isPathAllowed } from "./security";
@@ -109,6 +110,15 @@ class ClaudeSession {
 	private stopRequested = false;
 	private _isProcessing = false;
 	private _wasInterruptedByNewMessage = false;
+
+	constructor() {
+		botEvents.on("interruptRequested", () => {
+			if (this.isRunning) {
+				this.markInterrupt();
+				this.stop();
+			}
+		});
+	}
 
 	get workingDir(): string {
 		return this._workingDir;
@@ -298,6 +308,7 @@ class ClaudeSession {
 		// Create abort controller for cancellation
 		this.abortController = new AbortController();
 		this.isQueryRunning = true;
+		botEvents.emit("sessionRunning", true);
 		this.stopRequested = false;
 		this.queryStarted = new Date();
 		this.currentTool = null;
@@ -516,6 +527,7 @@ class ClaudeSession {
 			}
 		} finally {
 			this.isQueryRunning = false;
+			botEvents.emit("sessionRunning", false);
 			this.abortController = null;
 			this.queryStarted = null;
 			this.currentTool = null;
