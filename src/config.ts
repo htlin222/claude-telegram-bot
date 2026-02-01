@@ -140,14 +140,49 @@ export const SAFETY_PROMPT = buildSafetyPrompt(ALLOWED_PATHS);
 
 // Dangerous command patterns to block
 export const BLOCKED_PATTERNS = [
+	// Destructive file operations
 	"rm -rf /",
 	"rm -rf ~",
 	"rm -rf $HOME",
+	"rm -rf /*",
+	"rm -r /",
 	"sudo rm",
+	// System damage
 	":(){ :|:& };:", // Fork bomb
 	"> /dev/sd",
 	"mkfs.",
 	"dd if=",
+	"chmod 777 /",
+	"chmod -R 777",
+	"chown -R",
+	// Remote code execution
+	"curl | bash",
+	"curl | sh",
+	"wget | bash",
+	"wget | sh",
+	"curl -s | bash",
+	"wget -q | sh",
+	// Sensitive file access
+	"> /etc/",
+	">> /etc/",
+	"mv /etc/",
+	"cp /etc/passwd",
+	"cat /etc/shadow",
+	// Network dangers
+	"nc -l",
+	"ncat -l",
+	// Process/system manipulation
+	"kill -9 1",
+	"killall",
+	"pkill -9",
+	"shutdown",
+	"reboot",
+	"init 0",
+	"init 6",
+	// History/log tampering
+	"history -c",
+	"> ~/.bash_history",
+	"shred",
 ];
 
 // Query timeout interval (3 minutes) - prompts user to continue or abort

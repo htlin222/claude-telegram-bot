@@ -12,6 +12,7 @@ import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
 import { createStatusCallback, StreamingState } from "./streaming";
+import { execShellCommand } from "./text";
 
 /**
  * Handle callback queries from inline keyboards.
@@ -33,25 +34,31 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2. Handle timeout response callbacks
+	// 2. Handle shell command confirmation
+	if (callbackData.startsWith("shell:")) {
+		await handleShellCallback(ctx, userId, username, callbackData);
+		return;
+	}
+
+	// 2a. Handle timeout response callbacks
 	if (callbackData.startsWith("timeout:")) {
 		await handleTimeoutCallback(ctx, callbackData);
 		return;
 	}
 
-	// 2a. Handle action callbacks (undo/test/commit)
+	// 2b. Handle action callbacks (undo/test/commit)
 	if (callbackData.startsWith("action:")) {
 		await handleActionCallback(ctx, userId, username, callbackData);
 		return;
 	}
 
-	// 2b. Handle bookmark callbacks
+	// 2c. Handle bookmark callbacks
 	if (callbackData.startsWith("bookmark:")) {
 		await handleBookmarkCallback(ctx, callbackData);
 		return;
 	}
 
-	// 2c. Handle file sending callbacks
+	// 2d. Handle file sending callbacks
 	if (callbackData.startsWith("sendfile:")) {
 		await handleSendFileCallback(ctx, callbackData);
 		return;
@@ -174,6 +181,71 @@ export async function handleCallback(ctx: Context): Promise<void> {
 	} finally {
 		typing.stop();
 	}
+}
+
+/**
+ * Handle shell command confirmation callbacks.
+ * Format: shell:run:base64cmd or shell:cancel
+ */
+async function handleShellCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	callbackData: string,
+): Promise<void> {
+	const parts = callbackData.split(":");
+	const action = parts[1];
+
+	if (action === "cancel") {
+		await ctx.answerCallbackQuery({ text: "Cancelled" });
+		try {
+			await ctx.editMessageText("❌ Command cancelled");
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	if (action === "run") {
+		const encodedCmd = parts.slice(2).join(":"); // Handle colons in base64
+		let shellCmd: string;
+		try {
+			shellCmd = Buffer.from(encodedCmd, "base64").toString("utf-8");
+		} catch {
+			await ctx.answerCallbackQuery({ text: "Invalid command" });
+			return;
+		}
+
+		await ctx.answerCallbackQuery({ text: "Running..." });
+
+		const cwd = session.workingDir;
+		try {
+			await ctx.editMessageText(
+				`⚡ Running in <code>${cwd}</code>:\n<code>${shellCmd}</code>`,
+				{ parse_mode: "HTML" },
+			);
+		} catch {
+			// Message may have been deleted
+		}
+
+		const { stdout, stderr, exitCode } = await execShellCommand(shellCmd, cwd);
+		const output = (stdout + stderr).trim();
+		const maxLen = 4000;
+		const truncated =
+			output.length > maxLen
+				? `${output.slice(0, maxLen)}...(truncated)`
+				: output;
+
+		const statusEmoji = exitCode === 0 ? "✅" : "❌";
+		await ctx.reply(
+			`${statusEmoji} Exit code: ${exitCode}\n<pre>${truncated || "(no output)"}</pre>`,
+			{ parse_mode: "HTML" },
+		);
+		await auditLog(userId, username, "SHELL", shellCmd, `exit=${exitCode}`);
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
 }
 
 /**

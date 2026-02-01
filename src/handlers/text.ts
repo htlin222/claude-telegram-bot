@@ -4,6 +4,7 @@
 
 import { spawn } from "node:child_process";
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { ALLOWED_USERS } from "../config";
 import { formatUserError } from "../errors";
 import { checkCommandSafety, isAuthorized, rateLimiter } from "../security";
@@ -19,7 +20,7 @@ import { createStatusCallback, StreamingState } from "./streaming";
 /**
  * Execute a shell command and return output.
  */
-async function execShellCommand(
+export async function execShellCommand(
 	command: string,
 	cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -69,7 +70,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2. Shell command shortcut: !command executes directly
+	// 2. Shell command shortcut: !command requires confirmation
 	if (message.startsWith("!")) {
 		const shellCmd = message.slice(1).trim();
 		if (shellCmd) {
@@ -81,41 +82,23 @@ export async function handleText(ctx: Context): Promise<void> {
 				return;
 			}
 
+			// Show confirmation prompt with inline keyboard
 			const cwd = session.workingDir;
+			const encodedCmd = Buffer.from(shellCmd).toString("base64");
+			const keyboard = new InlineKeyboard()
+				.text("Run", `shell:run:${encodedCmd}`)
+				.text("Cancel", "shell:cancel");
+
 			await ctx.reply(
-				`⚡ Running in <code>${cwd}</code>:\n<code>${shellCmd}</code>`,
+				`⚠️ <b>Confirm shell command</b>\n\n` +
+					`📁 <code>${cwd}</code>\n` +
+					`💻 <code>${shellCmd.length > 200 ? `${shellCmd.slice(0, 200)}...` : shellCmd}</code>`,
 				{
 					parse_mode: "HTML",
+					reply_markup: keyboard,
 				},
 			);
-
-			const { stdout, stderr, exitCode } = await execShellCommand(
-				shellCmd,
-				cwd,
-			);
-			const output = (stdout + stderr).trim();
-			const maxLen = 4000;
-			const truncated =
-				output.length > maxLen
-					? `${output.slice(0, maxLen)}...(truncated)`
-					: output;
-
-			if (exitCode === 0) {
-				await ctx.reply(
-					`✅ Exit code: ${exitCode}\n<pre>${truncated || "(no output)"}</pre>`,
-					{
-						parse_mode: "HTML",
-					},
-				);
-			} else {
-				await ctx.reply(
-					`❌ Exit code: ${exitCode}\n<pre>${truncated || "(no output)"}</pre>`,
-					{
-						parse_mode: "HTML",
-					},
-				);
-			}
-			await auditLog(userId, username, "SHELL", shellCmd, `exit=${exitCode}`);
+			await auditLog(userId, username, "SHELL_PENDING", shellCmd);
 			return;
 		}
 	}
