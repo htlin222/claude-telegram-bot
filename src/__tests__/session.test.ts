@@ -396,4 +396,77 @@ describe("ClaudeSession", () => {
 			expect(session.canUndo).toBe(false);
 		});
 	});
+
+	describe("session debouncing", () => {
+		test("multiple saveSession calls within debounce window only write once", async () => {
+			let writeCount = 0;
+			// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+			const originalWrite = (Bun as any).write;
+
+			// Mock Bun.write to count session.json writes
+			// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+			(Bun as any).write = async (...args: unknown[]) => {
+				if (String(args[0]).includes("session.json")) {
+					writeCount++;
+				}
+				return originalWrite.apply(Bun, args);
+			};
+
+			try {
+				// Set up a session ID to trigger saves
+				session.sessionId = "test-session-debounce-1";
+
+				// Call saveSession multiple times rapidly
+				// @ts-expect-error - accessing private for test
+				session.saveSession();
+				// @ts-expect-error - accessing private for test
+				session.saveSession();
+				// @ts-expect-error - accessing private for test
+				session.saveSession();
+
+				// Immediately after calls, write should not have happened yet (debounced)
+				expect(writeCount).toBe(0);
+
+				// Wait for debounce timeout (500ms + buffer)
+				await Bun.sleep(600);
+
+				// Now exactly one write should have occurred
+				expect(writeCount).toBe(1);
+			} finally {
+				// Restore original Bun.write
+				// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+				(Bun as any).write = originalWrite;
+			}
+		});
+
+		test("flushSession writes immediately", async () => {
+			let writeCount = 0;
+			// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+			const originalWrite = (Bun as any).write;
+
+			// Mock Bun.write to count session.json writes
+			// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+			(Bun as any).write = async (...args: unknown[]) => {
+				if (String(args[0]).includes("session.json")) {
+					writeCount++;
+				}
+				return originalWrite.apply(Bun, args);
+			};
+
+			try {
+				// Set up a session ID to trigger saves
+				session.sessionId = "test-session-flush-1";
+
+				// Call flushSession for immediate write
+				session.flushSession();
+
+				// Write should happen immediately (synchronously)
+				expect(writeCount).toBe(1);
+			} finally {
+				// Restore original Bun.write
+				// biome-ignore lint/suspicious/noExplicitAny: test mock requires any
+				(Bun as any).write = originalWrite;
+			}
+		});
+	});
 });

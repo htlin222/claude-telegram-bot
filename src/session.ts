@@ -96,6 +96,11 @@ class ClaudeSession {
 	private _queryInstance: Query | null = null;
 	private _userMessageUuids: string[] = [];
 
+	// Debounced session saving
+	private _saveTimeout: ReturnType<typeof setTimeout> | null = null;
+	private _pendingSave = false;
+	private readonly SAVE_DEBOUNCE_MS = 500;
+
 	// Mutable working directory (can be changed with /cd)
 	private _workingDir: string = WORKING_DIR;
 
@@ -630,10 +635,30 @@ class ClaudeSession {
 	}
 
 	/**
-	 * Save session to disk for resume after restart.
+	 * Save session to disk for resume after restart (debounced).
+	 * Multiple calls within SAVE_DEBOUNCE_MS will only result in one write.
 	 */
 	private saveSession(): void {
 		if (!this.sessionId) return;
+
+		this._pendingSave = true;
+
+		// Clear existing timeout if any
+		if (this._saveTimeout) {
+			clearTimeout(this._saveTimeout);
+		}
+
+		// Schedule the actual write
+		this._saveTimeout = setTimeout(() => {
+			this._doSaveSession();
+		}, this.SAVE_DEBOUNCE_MS);
+	}
+
+	/**
+	 * Actually perform the session write to disk.
+	 */
+	private _doSaveSession(): void {
+		if (!this.sessionId || !this._pendingSave) return;
 
 		try {
 			const data: SessionData = {
@@ -645,6 +670,25 @@ class ClaudeSession {
 			console.log(`Session saved to ${SESSION_FILE}`);
 		} catch (error) {
 			console.warn(`Failed to save session: ${error}`);
+		} finally {
+			this._pendingSave = false;
+			this._saveTimeout = null;
+		}
+	}
+
+	/**
+	 * Immediately flush any pending session save to disk.
+	 * Use this for graceful shutdown to ensure session is persisted.
+	 */
+	flushSession(): void {
+		if (this._saveTimeout) {
+			clearTimeout(this._saveTimeout);
+			this._saveTimeout = null;
+		}
+
+		if (this._pendingSave || this.sessionId) {
+			this._pendingSave = true; // Ensure _doSaveSession runs
+			this._doSaveSession();
 		}
 	}
 
