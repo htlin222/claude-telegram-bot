@@ -276,6 +276,55 @@ export async function handleRetry(ctx: Context): Promise<void> {
 }
 
 /**
+ * /skill - Invoke a Claude Code skill.
+ */
+export async function handleSkill(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	// Get the skill name and args from command
+	const text = ctx.message?.text || "";
+	const match = text.match(/^\/skill\s+(\S+)(?:\s+(.*))?$/);
+
+	if (!match) {
+		await ctx.reply(
+			`🎯 <b>Invoke Skill</b>\n\n` +
+				`Usage: <code>/skill &lt;name&gt; [args]</code>\n\n` +
+				`Examples:\n` +
+				`• <code>/skill commit</code>\n` +
+				`• <code>/skill review-pr 123</code>\n` +
+				`• <code>/skill map</code>`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	const skillName = match[1] ?? "";
+	const skillArgs = match[2] || "";
+
+	// Build the skill command (Claude Code format: /skill_name args)
+	const skillCommand = skillArgs
+		? `/${skillName} ${skillArgs}`
+		: `/${skillName}`;
+
+	// Send to Claude via handleText
+	const { handleText } = await import("./text");
+	const fakeCtx = {
+		...ctx,
+		message: {
+			...ctx.message,
+			text: skillCommand,
+		},
+	} as Context;
+
+	await handleText(fakeCtx);
+}
+
+/**
  * /cd - Change working directory.
  */
 export async function handleCd(ctx: Context): Promise<void> {

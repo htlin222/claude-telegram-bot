@@ -24,6 +24,7 @@ import {
 	handleRestart,
 	handleResume,
 	handleRetry,
+	handleSkill,
 	handleStart,
 	handleStatus,
 	handleStop,
@@ -68,6 +69,7 @@ bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
 bot.command("retry", handleRetry);
 bot.command("cd", handleCd);
+bot.command("skill", handleSkill);
 bot.command("file", handleFile);
 bot.command("bookmarks", handleBookmarks);
 

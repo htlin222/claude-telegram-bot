@@ -25,6 +25,7 @@ import {
 	handleRestart,
 	handleResume,
 	handleRetry,
+	handleSkill,
 	handleStart,
 	handleStatus,
 	handleStop,
@@ -69,6 +70,7 @@ bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
 bot.command("retry", handleRetry);
 bot.command("cd", handleCd);
+bot.command("skill", handleSkill);
 bot.command("file", handleFile);
 bot.command("bookmarks", handleBookmarks);
 
@@ -117,6 +119,7 @@ await bot.api.setMyCommands([
 	{ command: "stop", description: "Interrupt current query" },
 	{ command: "status", description: "Check what Claude is doing" },
 	{ command: "cd", description: "Change working directory" },
+	{ command: "skill", description: "Invoke a Claude Code skill" },
 	{ command: "file", description: "Download a file" },
 	{ command: "bookmarks", description: "Manage directory bookmarks" },
 	{ command: "retry", description: "Retry last message" },

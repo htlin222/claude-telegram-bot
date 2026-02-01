@@ -11,6 +11,7 @@ export {
 	handleRestart,
 	handleResume,
 	handleRetry,
+	handleSkill,
 	handleStart,
 	handleStatus,
 	handleStop,
