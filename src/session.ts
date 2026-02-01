@@ -31,8 +31,9 @@ import type { SessionData, StatusCallback, TokenUsage } from "./types";
 
 /**
  * Determine thinking token budget based on message keywords.
+ * Exported for testing.
  */
-function getThinkingLevel(message: string): number {
+export function getThinkingLevel(message: string): number {
 	const msgLower = message.toLowerCase();
 
 	// Check deep thinking triggers first (more specific)
@@ -622,6 +623,9 @@ class ClaudeSession {
 		}
 	}
 }
+
+// Export class for testing
+export { ClaudeSession };
 
 // Global session instance
 export const session = new ClaudeSession();
