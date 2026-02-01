@@ -37,6 +37,7 @@ import {
 	handleUndo,
 	handleVoice,
 } from "./handlers";
+import { session } from "./session";
 
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
@@ -149,21 +150,38 @@ if (existsSync(RESTART_FILE)) {
 const runner = run(bot);
 
 // Graceful shutdown
-const stopRunner = () => {
-	if (runner.isRunning()) {
-		console.log("Stopping bot...");
-		runner.stop();
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+	console.log(`\n${signal} received - initiating graceful shutdown...`);
+
+	// Set a hard timeout
+	const forceExit = setTimeout(() => {
+		console.error("Shutdown timeout - forcing exit");
+		process.exit(1);
+	}, SHUTDOWN_TIMEOUT_MS);
+
+	try {
+		// Stop the runner (stops polling)
+		if (runner.isRunning()) {
+			runner.stop();
+			console.log("Bot stopped");
+		}
+
+		// Flush session data
+		session.flushSession();
+		console.log("Session flushed");
+
+		// Clear the timeout and exit cleanly
+		clearTimeout(forceExit);
+		console.log("Shutdown complete");
+		process.exit(0);
+	} catch (error) {
+		console.error("Error during shutdown:", error);
+		clearTimeout(forceExit);
+		process.exit(1);
 	}
-};
+}
 
-process.on("SIGINT", () => {
-	console.log("Received SIGINT");
-	stopRunner();
-	process.exit(0);
-});
-
-process.on("SIGTERM", () => {
-	console.log("Received SIGTERM");
-	stopRunner();
-	process.exit(0);
-});
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
