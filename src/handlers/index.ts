@@ -11,6 +11,7 @@ export {
 	handleFile,
 	handleModel,
 	handleNew,
+	handlePending,
 	handlePlan,
 	handleRestart,
 	handleResume,

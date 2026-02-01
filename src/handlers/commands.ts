@@ -190,6 +190,45 @@ export async function handleStatus(ctx: Context): Promise<void> {
 }
 
 /**
+ * /pending - Show and manage pending messages queue.
+ */
+export async function handlePending(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	const pending = session.getPendingMessages();
+
+	if (pending.length === 0) {
+		await ctx.reply("📭 No pending messages.");
+		return;
+	}
+
+	// Build message with inline keyboard
+	let text = `📋 <b>Pending Messages</b> (${pending.length})\n\n`;
+	const keyboard = new InlineKeyboard();
+
+	for (const msg of pending) {
+		const preview =
+			msg.text.length > 40 ? `${msg.text.slice(0, 40)}...` : msg.text;
+		const ago = Math.floor((Date.now() - msg.timestamp.getTime()) / 1000);
+		text += `• <code>${preview}</code> (${ago}s ago)\n`;
+
+		// Button with truncated text
+		const btnLabel =
+			msg.text.length > 25 ? `${msg.text.slice(0, 25)}...` : msg.text;
+		keyboard.text(btnLabel, `pending:exec:${msg.id}`).row();
+	}
+
+	keyboard.text("🗑 Clear All", "pending:clear");
+
+	await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+}
+
+/**
  * /resume - Resume the last session.
  */
 export async function handleResume(ctx: Context): Promise<void> {

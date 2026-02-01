@@ -125,6 +125,13 @@ class ClaudeSession {
 	// Last user message for retry functionality
 	private _lastUserMessage: string | null = null;
 
+	// Pending message queue
+	private _pendingMessages: Array<{
+		id: string;
+		text: string;
+		timestamp: Date;
+	}> = [];
+
 	/**
 	 * Set the user's response to a timeout check prompt.
 	 */
@@ -137,6 +144,46 @@ class ClaudeSession {
 	 */
 	getLastUserMessage(): string | null {
 		return this._lastUserMessage;
+	}
+
+	/**
+	 * Add a message to the pending queue.
+	 */
+	addPendingMessage(text: string): string {
+		const id = Math.random().toString(36).slice(2, 10);
+		this._pendingMessages.push({ id, text, timestamp: new Date() });
+		return id;
+	}
+
+	/**
+	 * Get all pending messages.
+	 */
+	getPendingMessages(): Array<{ id: string; text: string; timestamp: Date }> {
+		return [...this._pendingMessages];
+	}
+
+	/**
+	 * Remove and return a pending message by ID.
+	 */
+	removePendingMessage(id: string): string | null {
+		const index = this._pendingMessages.findIndex((m) => m.id === id);
+		if (index === -1) return null;
+		const [removed] = this._pendingMessages.splice(index, 1);
+		return removed?.text ?? null;
+	}
+
+	/**
+	 * Clear all pending messages.
+	 */
+	clearPendingMessages(): void {
+		this._pendingMessages = [];
+	}
+
+	/**
+	 * Get pending message count.
+	 */
+	get pendingCount(): number {
+		return this._pendingMessages.length;
 	}
 
 	constructor() {

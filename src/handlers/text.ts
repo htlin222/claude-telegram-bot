@@ -125,13 +125,26 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 4. Store message for retry
+	// 4. If session is busy, queue the message instead of executing
+	if (session.isRunning) {
+		const msgId = session.addPendingMessage(message);
+		const preview =
+			message.length > 50 ? `${message.slice(0, 50)}...` : message;
+		await ctx.reply(
+			`📥 Queued (${session.pendingCount} pending): <code>${preview}</code>\n\nUse /pending to view and execute.`,
+			{ parse_mode: "HTML" },
+		);
+		await auditLog(userId, username, "QUEUED", message, msgId);
+		return;
+	}
+
+	// 5. Store message for retry
 	session.lastMessage = message;
 
-	// 5. Mark processing started
+	// 6. Mark processing started
 	const stopProcessing = session.startProcessing();
 
-	// 6. Start typing indicator
+	// 7. Start typing indicator
 	const typing = startTypingIndicator(ctx);
 
 	// 7. Create streaming state and callback

@@ -5,7 +5,7 @@
  */
 
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { run, sequentialize } from "@grammyjs/runner";
+import { run } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import {
 	ALLOWED_USERS,
@@ -23,6 +23,7 @@ import {
 	handleFile,
 	handleModel,
 	handleNew,
+	handlePending,
 	handlePhoto,
 	handlePlan,
 	handleRestart,
@@ -42,26 +43,8 @@ import { session } from "./session";
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
 
-// Sequentialize non-command messages per user (prevents race conditions)
-// Commands bypass sequentialization so they work immediately
-bot.use(
-	sequentialize((ctx) => {
-		// Commands are not sequentialized - they work immediately
-		if (ctx.message?.text?.startsWith("/")) {
-			return undefined;
-		}
-		// Messages with !! prefix bypass queue (interrupt and send to Claude)
-		if (ctx.message?.text?.startsWith("!!")) {
-			return undefined;
-		}
-		// Callback queries (button clicks) are not sequentialized
-		if (ctx.callbackQuery) {
-			return undefined;
-		}
-		// Other messages are sequentialized per chat
-		return ctx.chat?.id.toString();
-	}),
-);
+// Note: sequentialize removed - messages during active query are now queued
+// and can be viewed/executed via /pending command
 
 // ============== Command Handlers ==============
 
@@ -85,6 +68,8 @@ bot.command("plan", handlePlan);
 bot.command("compact", handleCompact);
 bot.command("undo", handleUndo);
 bot.command("bookmarks", handleBookmarks);
+bot.command("pending", handlePending);
+bot.command("q", handlePending); // Alias for queue
 
 // ============== Message Handlers ==============
 

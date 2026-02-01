@@ -46,19 +46,25 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2b. Handle action callbacks (undo/test/commit)
+	// 2b. Handle pending message callbacks
+	if (callbackData.startsWith("pending:")) {
+		await handlePendingCallback(ctx, userId, username, callbackData);
+		return;
+	}
+
+	// 2c. Handle action callbacks (undo/test/commit)
 	if (callbackData.startsWith("action:")) {
 		await handleActionCallback(ctx, userId, username, callbackData);
 		return;
 	}
 
-	// 2c. Handle bookmark callbacks
+	// 2d. Handle bookmark callbacks
 	if (callbackData.startsWith("bookmark:")) {
 		await handleBookmarkCallback(ctx, callbackData);
 		return;
 	}
 
-	// 2d. Handle file sending callbacks
+	// 2e. Handle file sending callbacks
 	if (callbackData.startsWith("sendfile:")) {
 		await handleSendFileCallback(ctx, callbackData);
 		return;
@@ -245,6 +251,89 @@ async function handleShellCallback(
 			{ parse_mode: "HTML", message_effect_id: effectId },
 		);
 		await auditLog(userId, username, "SHELL", shellCmd, `exit=${exitCode}`);
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
+}
+
+/**
+ * Handle pending message callbacks.
+ * Format: pending:exec:{id} or pending:clear
+ */
+async function handlePendingCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	callbackData: string,
+): Promise<void> {
+	const parts = callbackData.split(":");
+	const action = parts[1];
+
+	if (action === "clear") {
+		session.clearPendingMessages();
+		await ctx.answerCallbackQuery({ text: "Cleared all pending messages" });
+		try {
+			await ctx.editMessageText("📭 Pending messages cleared.");
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	if (action === "exec") {
+		const msgId = parts[2];
+		if (!msgId) {
+			await ctx.answerCallbackQuery({ text: "Invalid message ID" });
+			return;
+		}
+
+		const message = session.removePendingMessage(msgId);
+		if (!message) {
+			await ctx.answerCallbackQuery({ text: "Message not found or expired" });
+			return;
+		}
+
+		// Check if session is busy
+		if (session.isRunning) {
+			// Re-queue the message
+			session.addPendingMessage(message);
+			await ctx.answerCallbackQuery({
+				text: "Session busy. Message re-queued.",
+			});
+			return;
+		}
+
+		await ctx.answerCallbackQuery({ text: "Executing..." });
+
+		// Delete the pending list message
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+
+		// Execute the message
+		const typing = startTypingIndicator(ctx);
+		const state = new StreamingState();
+		const statusCallback = createStatusCallback(ctx, state);
+
+		try {
+			const response = await session.sendMessageStreaming(
+				message,
+				username,
+				userId,
+				statusCallback,
+				ctx.chat?.id,
+				ctx,
+			);
+			await auditLog(userId, username, "PENDING_EXEC", message, response);
+		} catch (error) {
+			console.error("Error executing pending message:", error);
+			await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+		} finally {
+			typing.stop();
+		}
 		return;
 	}
 
