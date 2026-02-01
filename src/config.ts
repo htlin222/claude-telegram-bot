@@ -127,6 +127,11 @@ ${pathsList}
 
 4. For any destructive or irreversible action, ALWAYS ask for confirmation first.
 
+5. NEVER use the AskUserQuestion tool - it does not work in Telegram.
+   - Instead, just ask your question directly in your response text
+   - The user will reply with their answer in the next message
+   - Example: Instead of using AskUserQuestion, just say "Which option do you prefer: A or B?"
+
 You are running via Telegram, so the user cannot easily undo mistakes. Be extra careful!
 `;
 }
