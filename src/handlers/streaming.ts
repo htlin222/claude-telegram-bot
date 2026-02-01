@@ -88,6 +88,7 @@ export class StreamingState {
 	toolMessages: Message[] = []; // ephemeral tool status messages
 	lastEditTimes = new Map<number, number>(); // segment_id -> last edit time
 	lastContent = new Map<number, string>(); // segment_id -> last sent content
+	toolStartTime: number | null = null; // timestamp when current tool started
 }
 
 /**
@@ -109,6 +110,7 @@ export function createStatusCallback(
 				});
 				state.toolMessages.push(thinkingMsg);
 			} else if (statusType === "tool") {
+				state.toolStartTime = Date.now();
 				const toolMsg = await ctx.reply(content, { parse_mode: "HTML" });
 				state.toolMessages.push(toolMsg);
 			} else if (statusType === "text" && segmentId !== undefined) {
