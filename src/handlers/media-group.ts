@@ -193,12 +193,20 @@ export async function handleProcessingError(
 
 	// Send error message
 	const errorStr = String(error);
+	const isClaudeCodeCrash = errorStr
+		.toLowerCase()
+		.includes("process exited with code");
 	if (errorStr.includes("abort") || errorStr.includes("cancel")) {
 		// Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message
 		const wasInterrupt = session.consumeInterruptFlag();
 		if (!wasInterrupt) {
 			await ctx.reply("🛑 Query stopped.");
 		}
+	} else if (isClaudeCodeCrash) {
+		await session.kill(); // Clear possibly corrupted session
+		await ctx.reply(
+			"⚠️ Claude Code crashed and the session was reset. Please try again.",
+		);
 	} else {
 		await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
 	}

@@ -418,6 +418,8 @@ class ClaudeSession {
 		let lastTextUpdate = 0;
 		let queryCompleted = false;
 		let askUserTriggered = false;
+		let suppressExitError = false;
+		let forcedResponse: string | null = null;
 
 		try {
 			// Use V1 query() API - supports all options including cwd, mcpServers, etc.
@@ -645,13 +647,28 @@ class ClaudeSession {
 			// V1 query completes automatically when the generator ends
 		} catch (error) {
 			const errorStr = String(error).toLowerCase();
+			const isExitError = errorStr.includes("process exited with code");
 			const isCleanupError =
 				errorStr.includes("cancel") || errorStr.includes("abort");
+			const hasPartialResponse = responseParts.length > 0;
+			const canSuppressExitError =
+				isExitError &&
+				(queryCompleted ||
+					askUserTriggered ||
+					this.stopRequested ||
+					hasPartialResponse);
 
 			if (
-				isCleanupError &&
-				(queryCompleted || askUserTriggered || this.stopRequested)
+				(isCleanupError || canSuppressExitError) &&
+				(queryCompleted ||
+					askUserTriggered ||
+					this.stopRequested ||
+					hasPartialResponse)
 			) {
+				if (isExitError && hasPartialResponse && !queryCompleted) {
+					suppressExitError = true;
+					forcedResponse = responseParts.join("");
+				}
 				console.warn(`Suppressed post-completion error: ${error}`);
 			} else {
 				console.error(`Error in query: ${error}`);
@@ -688,7 +705,10 @@ class ClaudeSession {
 
 		await statusCallback("done", "");
 
-		const finalResponse = responseParts.join("") || "No response from Claude.";
+		const finalResponse =
+			forcedResponse ||
+			responseParts.join("") ||
+			"No response from Claude.";
 		this.lastBotResponse = finalResponse;
 		return finalResponse;
 	}

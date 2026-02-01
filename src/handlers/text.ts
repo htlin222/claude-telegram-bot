@@ -204,6 +204,11 @@ export async function handleText(ctx: Context): Promise<void> {
 				if (!wasInterrupt) {
 					await ctx.reply("🛑 Query stopped.");
 				}
+			} else if (isClaudeCodeCrash) {
+				await session.kill(); // Clear possibly corrupted session
+				await ctx.reply(
+					"⚠️ Claude Code crashed and the session was reset. Please try again.",
+				);
 			} else {
 				await ctx.reply(`❌ ${formatUserError(error as Error)}`);
 			}
