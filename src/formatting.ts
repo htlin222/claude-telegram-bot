@@ -279,7 +279,7 @@ export function formatToolStatus(
 		const cmd = String(toolInput.command || "");
 		const desc = String(toolInput.description || "");
 		if (desc) {
-			return `${emoji} ${escapeHtml(desc)}`;
+			return `${emoji} ${escapeHtml(desc)}: ${code(truncate(cmd, 40))}`;
 		}
 		return `${emoji} ${code(truncate(cmd, 50))}`;
 	}
@@ -302,7 +302,7 @@ export function formatToolStatus(
 
 	if (toolName === "WebSearch") {
 		const query = String(toolInput.query || "");
-		return `${emoji} Searching: ${escapeHtml(truncate(query, 50))}`;
+		return `${emoji} Searching: ${code(truncate(query, 50))}`;
 	}
 
 	if (toolName === "WebFetch") {
@@ -313,7 +313,7 @@ export function formatToolStatus(
 	if (toolName === "Task") {
 		const desc = String(toolInput.description || "");
 		if (desc) {
-			return `${emoji} Agent: ${escapeHtml(desc)}`;
+			return `${emoji} Agent: ${code(desc)}`;
 		}
 		return `${emoji} Running agent...`;
 	}
@@ -321,7 +321,7 @@ export function formatToolStatus(
 	if (toolName === "Skill") {
 		const skillName = String(toolInput.skill || "");
 		if (skillName) {
-			return `💭 Using skill: ${escapeHtml(skillName)}`;
+			return `💭 Using skill: ${code(skillName)}`;
 		}
 		return `💭 Using skill...`;
 	}
@@ -348,13 +348,13 @@ export function formatToolStatus(
 				"";
 
 			if (summary) {
-				return `🔧 ${server} ${action}: ${escapeHtml(
+				return `🔧 ${code(server)} ${action}: ${code(
 					truncate(String(summary), 40),
 				)}`;
 			}
-			return `🔧 ${server}: ${action}`;
+			return `🔧 ${code(server)}: ${action}`;
 		}
-		return `🔧 ${escapeHtml(toolName)}`;
+		return `🔧 ${code(toolName)}`;
 	}
 
 	return `${emoji} ${escapeHtml(toolName)}`;
