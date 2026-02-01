@@ -61,6 +61,9 @@ bot.use(
 bot.command("start", handleStart);
 bot.command("new", handleNew);
 bot.command("stop", handleStop);
+bot.command("c", handleStop);
+bot.command("kill", handleStop);
+bot.command("dc", handleStop);
 bot.command("status", handleStatus);
 bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
