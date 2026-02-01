@@ -237,6 +237,17 @@ export const TELEGRAM_SAFE_LIMIT = 4000; // Safe limit with buffer for formattin
 export const STREAMING_THROTTLE_MS = 500; // Throttle streaming updates
 export const BUTTON_LABEL_MAX_LENGTH = 30; // Max chars for inline button labels
 
+// ============== Telegram Message Effects ==============
+// https://core.telegram.org/api/effects
+export const MESSAGE_EFFECTS = {
+	FIRE: "5104841245755180586", // 🔥
+	THUMBS_UP: "5107584321108051014", // 👍
+	THUMBS_DOWN: "5104858069142078462", // 👎
+	HEART: "5159385139981059251", // ❤️
+	CONFETTI: "5046509860389126442", // 🎉
+	POOP: "5046589136895476101", // 💩
+} as const;
+
 // ============== Audit Logging ==============
 
 export const AUDIT_LOG_PATH =

@@ -7,7 +7,7 @@
 import { unlinkSync } from "node:fs";
 import type { Context } from "grammy";
 import { addBookmark, removeBookmark } from "../bookmarks";
-import { ALLOWED_USERS } from "../config";
+import { ALLOWED_USERS, MESSAGE_EFFECTS } from "../config";
 import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
@@ -237,9 +237,12 @@ async function handleShellCallback(
 				: output;
 
 		const statusEmoji = exitCode === 0 ? "✅" : "❌";
+		// 👍 Thumbs Up for success, 👎 Thumbs Down for failure
+		const effectId =
+			exitCode === 0 ? MESSAGE_EFFECTS.THUMBS_UP : MESSAGE_EFFECTS.THUMBS_DOWN;
 		await ctx.reply(
 			`${statusEmoji} Exit code: ${exitCode}\n<pre>${truncated || "(no output)"}</pre>`,
-			{ parse_mode: "HTML" },
+			{ parse_mode: "HTML", message_effect_id: effectId },
 		);
 		await auditLog(userId, username, "SHELL", shellCmd, `exit=${exitCode}`);
 		return;

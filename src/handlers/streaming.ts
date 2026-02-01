@@ -9,6 +9,7 @@ import { InlineKeyboard } from "grammy";
 import type { Message } from "grammy/types";
 import {
 	BUTTON_LABEL_MAX_LENGTH,
+	MESSAGE_EFFECTS,
 	STREAMING_THROTTLE_MS,
 	TELEGRAM_MESSAGE_LIMIT,
 	TELEGRAM_SAFE_LIMIT,
@@ -229,12 +230,15 @@ export function createStatusCallback(
 					}
 				}
 
-				// Show action buttons after response completes
+				// Show action buttons after response completes with confetti effect 🎉
 				const actionKeyboard = new InlineKeyboard()
 					.text("Undo", "action:undo")
 					.text("Test", "action:test")
 					.text("Commit", "action:commit");
-				await ctx.reply("─", { reply_markup: actionKeyboard });
+				await ctx.reply("─", {
+					reply_markup: actionKeyboard,
+					message_effect_id: MESSAGE_EFFECTS.CONFETTI,
+				});
 			}
 		} catch (error) {
 			console.error("Status callback error:", error);
