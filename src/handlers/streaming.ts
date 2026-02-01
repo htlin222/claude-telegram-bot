@@ -14,6 +14,7 @@ import {
 	TELEGRAM_SAFE_LIMIT,
 } from "../config";
 import { convertMarkdownToHtml, escapeHtml } from "../formatting";
+import { safeTelegramCall } from "../telegram-api";
 import type { StatusCallback } from "../types";
 
 /**
@@ -145,28 +146,28 @@ export function createStatusCallback(
 					if (formatted === state.lastContent.get(segmentId)) {
 						return;
 					}
-					try {
-						await ctx.api.editMessageText(
-							msg.chat.id,
-							msg.message_id,
-							formatted,
-							{
-								parse_mode: "HTML",
-							},
-						);
-						state.lastContent.set(segmentId, formatted);
-					} catch (htmlError) {
-						console.debug("HTML edit failed, trying plain text:", htmlError);
+					const editResult = await safeTelegramCall("editMessage", async () => {
 						try {
 							await ctx.api.editMessageText(
 								msg.chat.id,
 								msg.message_id,
 								formatted,
+								{ parse_mode: "HTML" },
 							);
-							state.lastContent.set(segmentId, formatted);
-						} catch (editError) {
-							console.debug("Edit message failed:", editError);
+							return true;
+						} catch (htmlError) {
+							// HTML parse failed, try plain text
+							console.debug("HTML edit failed, trying plain text:", htmlError);
+							await ctx.api.editMessageText(
+								msg.chat.id,
+								msg.message_id,
+								formatted,
+							);
+							return true;
 						}
+					});
+					if (editResult) {
+						state.lastContent.set(segmentId, formatted);
 					}
 					state.lastEditTimes.set(segmentId, now);
 				}
@@ -181,18 +182,11 @@ export function createStatusCallback(
 					}
 
 					if (formatted.length <= TELEGRAM_MESSAGE_LIMIT) {
-						try {
-							await ctx.api.editMessageText(
-								msg.chat.id,
-								msg.message_id,
-								formatted,
-								{
-									parse_mode: "HTML",
-								},
-							);
-						} catch (error) {
-							console.debug("Failed to edit final message:", error);
-						}
+						await safeTelegramCall("editFinalMessage", () =>
+							ctx.api.editMessageText(msg.chat.id, msg.message_id, formatted, {
+								parse_mode: "HTML",
+							}),
+						);
 					} else {
 						// Too long - delete and split
 						try {
