@@ -6,7 +6,7 @@
 
 import { existsSync, statSync } from "node:fs";
 import type { Context } from "grammy";
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import { isBookmarked, loadBookmarks, resolvePath } from "../bookmarks";
 import { ALLOWED_USERS, RESTART_FILE } from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
@@ -37,6 +37,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 			`/resume - Resume last session\n` +
 			`/retry - Retry last message\n` +
 			`/cd - Change working directory\n` +
+			`/preview - Download a file\n` +
 			`/bookmarks - Manage directory bookmarks\n` +
 			`/restart - Restart the bot\n\n` +
 			`<b>Tips:</b>\n` +
@@ -299,7 +300,8 @@ export async function handleCd(ctx: Context): Promise<void> {
 	}
 
 	const inputPath = (match[1] ?? "").trim();
-	const resolvedPath = resolvePath(inputPath);
+	// Resolve relative paths from current working directory
+	const resolvedPath = resolvePath(inputPath, session.workingDir);
 
 	// Validate path exists and is a directory
 	if (!existsSync(resolvedPath)) {
@@ -347,6 +349,85 @@ export async function handleCd(ctx: Context): Promise<void> {
 			reply_markup: keyboard,
 		},
 	);
+}
+
+/**
+ * /preview - Send a file to the user.
+ */
+export async function handlePreview(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	// Get the path argument from command
+	const text = ctx.message?.text || "";
+	const match = text.match(/^\/preview\s+(.+)$/);
+
+	if (!match) {
+		await ctx.reply(
+			`📎 <b>Preview/Download File</b>\n\n` +
+				`Usage: <code>/preview &lt;filepath&gt;</code>\n\n` +
+				`Examples:\n` +
+				`• <code>/preview output.txt</code> (relative to working dir)\n` +
+				`• <code>/preview /absolute/path/file.pdf</code>\n` +
+				`• <code>/preview ~/Documents/report.csv</code>`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	const inputPath = (match[1] ?? "").trim();
+	// Resolve relative paths from current working directory
+	const resolvedPath = resolvePath(inputPath, session.workingDir);
+
+	// Validate path exists
+	if (!existsSync(resolvedPath)) {
+		await ctx.reply(`❌ File not found: <code>${resolvedPath}</code>`, {
+			parse_mode: "HTML",
+		});
+		return;
+	}
+
+	const stats = statSync(resolvedPath);
+	if (stats.isDirectory()) {
+		await ctx.reply(
+			`❌ Cannot preview directory: <code>${resolvedPath}</code>\n\nUse <code>/cd</code> to navigate.`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	// Check if path is allowed
+	if (!isPathAllowed(resolvedPath)) {
+		await ctx.reply(
+			`❌ Access denied: <code>${resolvedPath}</code>\n\nPath must be in allowed directories.`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	// Check file size (Telegram limit is 50MB for bots)
+	const MAX_FILE_SIZE = 50 * 1024 * 1024;
+	if (stats.size > MAX_FILE_SIZE) {
+		const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+		await ctx.reply(
+			`❌ File too large: <code>${resolvedPath}</code>\n\nSize: ${sizeMB}MB (max 50MB)`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	// Send the file
+	try {
+		const filename = resolvedPath.split("/").pop() || "file";
+		await ctx.replyWithDocument(new InputFile(resolvedPath, filename));
+	} catch (error) {
+		const errMsg = error instanceof Error ? error.message : String(error);
+		await ctx.reply(`❌ Failed to send file: ${errMsg}`);
+	}
 }
 
 /**

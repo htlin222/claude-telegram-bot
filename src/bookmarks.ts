@@ -99,8 +99,12 @@ export function isBookmarked(path: string): boolean {
 
 /**
  * Resolve path with ~ expansion.
+ * If baseDir is provided, relative paths are resolved from there.
  */
-export function resolvePath(path: string): string {
+export function resolvePath(path: string, baseDir?: string): string {
 	const expanded = path.replace(/^~/, homedir());
+	if (baseDir && !expanded.startsWith("/")) {
+		return resolve(baseDir, expanded);
+	}
 	return resolve(expanded);
 }

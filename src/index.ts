@@ -20,6 +20,7 @@ import {
 	handleDocument,
 	handleNew,
 	handlePhoto,
+	handlePreview,
 	handleRestart,
 	handleResume,
 	handleRetry,
@@ -64,6 +65,7 @@ bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
 bot.command("retry", handleRetry);
 bot.command("cd", handleCd);
+bot.command("preview", handlePreview);
 bot.command("bookmarks", handleBookmarks);
 
 // ============== Message Handlers ==============

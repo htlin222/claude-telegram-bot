@@ -7,6 +7,7 @@ export {
 	handleBookmarks,
 	handleCd,
 	handleNew,
+	handlePreview,
 	handleRestart,
 	handleResume,
 	handleRetry,

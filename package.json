@@ -1,6 +1,6 @@
 {
 	"name": "ctb",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "Control Claude Code from Telegram - run multiple bot instances per project",
 	"type": "module",
 	"bin": {
@@ -10,7 +10,9 @@
 		"start": "bun run src/bot.ts",
 		"dev": "bun --watch run src/bot.ts",
 		"ctb": "bun run src/cli.ts",
-		"typecheck": "bun run --bun tsc --noEmit"
+		"typecheck": "bun run --bun tsc --noEmit",
+		"test": "bun test",
+		"test:watch": "bun test --watch"
 	},
 	"keywords": [
 		"claude",

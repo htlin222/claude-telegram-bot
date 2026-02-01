@@ -1,7 +1,7 @@
 /**
  * Callback query handler for Claude Telegram Bot.
  *
- * Handles inline keyboard button presses (ask_user MCP integration, bookmarks).
+ * Handles inline keyboard button presses (ask_user MCP integration, bookmarks, file sending).
  */
 
 import { unlinkSync } from "node:fs";
@@ -36,6 +36,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 	// 2. Handle bookmark callbacks
 	if (callbackData.startsWith("bookmark:")) {
 		await handleBookmarkCallback(ctx, callbackData);
+		return;
+	}
+
+	// 2b. Handle file sending callbacks
+	if (callbackData.startsWith("sendfile:")) {
+		await handleSendFileCallback(ctx, callbackData);
 		return;
 	}
 
@@ -244,5 +250,44 @@ async function handleBookmarkCallback(
 
 		default:
 			await ctx.answerCallbackQuery({ text: "Unknown action" });
+	}
+}
+
+/**
+ * Handle file sending callbacks.
+ * Format: sendfile:base64encodedpath
+ */
+async function handleSendFileCallback(
+	ctx: Context,
+	callbackData: string,
+): Promise<void> {
+	const { existsSync } = await import("node:fs");
+	const { basename } = await import("node:path");
+	const { InputFile } = await import("grammy");
+
+	// Decode the file path (base64 encoded to handle special chars)
+	const encodedPath = callbackData.slice("sendfile:".length);
+	let filePath: string;
+	try {
+		filePath = Buffer.from(encodedPath, "base64").toString("utf-8");
+	} catch {
+		await ctx.answerCallbackQuery({ text: "Invalid file path" });
+		return;
+	}
+
+	// Check file exists
+	if (!existsSync(filePath)) {
+		await ctx.answerCallbackQuery({ text: "File not found" });
+		return;
+	}
+
+	// Send the file
+	try {
+		await ctx.answerCallbackQuery({ text: "Sending file..." });
+		const fileName = basename(filePath);
+		await ctx.replyWithDocument(new InputFile(filePath, fileName));
+	} catch (error) {
+		console.error("Failed to send file:", error);
+		await ctx.reply(`❌ Failed to send file: ${String(error).slice(0, 100)}`);
 	}
 }

@@ -21,6 +21,7 @@ import {
 	handleDocument,
 	handleNew,
 	handlePhoto,
+	handlePreview,
 	handleRestart,
 	handleResume,
 	handleRetry,
@@ -65,6 +66,7 @@ bot.command("resume", handleResume);
 bot.command("restart", handleRestart);
 bot.command("retry", handleRetry);
 bot.command("cd", handleCd);
+bot.command("preview", handlePreview);
 bot.command("bookmarks", handleBookmarks);
 
 // ============== Message Handlers ==============
@@ -103,6 +105,21 @@ console.log("Starting bot...");
 // Get bot info first
 const botInfo = await bot.api.getMe();
 console.log(`Bot started: @${botInfo.username}`);
+
+// Set up Telegram menu commands
+await bot.api.setMyCommands([
+	{ command: "start", description: "Show status and user ID" },
+	{ command: "new", description: "Start a fresh session" },
+	{ command: "resume", description: "Resume last session" },
+	{ command: "stop", description: "Interrupt current query" },
+	{ command: "status", description: "Check what Claude is doing" },
+	{ command: "cd", description: "Change working directory" },
+	{ command: "preview", description: "Download a file" },
+	{ command: "bookmarks", description: "Manage directory bookmarks" },
+	{ command: "retry", description: "Retry last message" },
+	{ command: "restart", description: "Restart the bot" },
+]);
+console.log("Menu commands registered");
 
 // Check for pending restart message to update
 if (existsSync(RESTART_FILE)) {
