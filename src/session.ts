@@ -122,11 +122,21 @@ class ClaudeSession {
 	private _lastTimeoutCheck = 0;
 	private _timeoutResponse: "continue" | "abort" | null = null;
 
+	// Last user message for retry functionality
+	private _lastUserMessage: string | null = null;
+
 	/**
 	 * Set the user's response to a timeout check prompt.
 	 */
 	setTimeoutResponse(response: "continue" | "abort"): void {
 		this._timeoutResponse = response;
+	}
+
+	/**
+	 * Get the last user message (for retry).
+	 */
+	getLastUserMessage(): string | null {
+		return this._lastUserMessage;
 	}
 
 	constructor() {
@@ -269,6 +279,9 @@ class ClaudeSession {
 			haiku: "claude-haiku-3-5",
 		};
 		const modelId = modelMap[this.currentModel];
+
+		// Store original message for retry functionality
+		this._lastUserMessage = message;
 
 		// Inject current date/time at session start so Claude doesn't need to call a tool for it
 		let messageToSend = message;

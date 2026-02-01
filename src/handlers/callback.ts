@@ -39,6 +39,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 2a. Handle feedback callbacks
+	if (callbackData.startsWith("feedback:")) {
+		await handleFeedbackCallback(ctx, userId, username, callbackData);
+		return;
+	}
+
 	// 2b. Handle bookmark callbacks
 	if (callbackData.startsWith("bookmark:")) {
 		await handleBookmarkCallback(ctx, callbackData);
@@ -167,6 +173,73 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		}
 	} finally {
 		typing.stop();
+	}
+}
+
+/**
+ * Handle feedback callbacks (👍/👎/重試).
+ * Format: feedback:good, feedback:bad, feedback:retry
+ */
+async function handleFeedbackCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	callbackData: string,
+): Promise<void> {
+	const action = callbackData.split(":")[1];
+
+	if (action === "good") {
+		await ctx.answerCallbackQuery({ text: "👍 感謝回饋！" });
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+		await auditLog(userId, username, "FEEDBACK", "good");
+	} else if (action === "bad") {
+		await ctx.answerCallbackQuery({ text: "👎 收到，會改進" });
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+		await auditLog(userId, username, "FEEDBACK", "bad");
+	} else if (action === "retry") {
+		await ctx.answerCallbackQuery({ text: "重新執行上一個請求..." });
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+
+		// Get last user message from session and resend
+		const lastMessage = session.getLastUserMessage();
+		if (lastMessage) {
+			const typing = startTypingIndicator(ctx);
+			const state = new StreamingState();
+			const statusCallback = createStatusCallback(ctx, state);
+
+			try {
+				const response = await session.sendMessageStreaming(
+					lastMessage,
+					username,
+					userId,
+					statusCallback,
+					ctx.chat?.id,
+					ctx,
+				);
+				await auditLog(userId, username, "RETRY", lastMessage, response);
+			} catch (error) {
+				console.error("Error retrying:", error);
+				await ctx.reply(`❌ 重試失敗: ${String(error).slice(0, 200)}`);
+			} finally {
+				typing.stop();
+			}
+		} else {
+			await ctx.reply("❌ 沒有可重試的訊息");
+		}
+	} else {
+		await ctx.answerCallbackQuery({ text: "Unknown action" });
 	}
 }
 

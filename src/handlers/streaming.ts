@@ -228,6 +228,13 @@ export function createStatusCallback(
 						console.debug("Failed to delete tool message:", error);
 					}
 				}
+
+				// Show action buttons after response completes
+				const actionKeyboard = new InlineKeyboard()
+					.text("👍", "feedback:good")
+					.text("👎", "feedback:bad")
+					.text("🔄 重試", "feedback:retry");
+				await ctx.reply("─", { reply_markup: actionKeyboard });
 			}
 		} catch (error) {
 			console.error("Status callback error:", error);
