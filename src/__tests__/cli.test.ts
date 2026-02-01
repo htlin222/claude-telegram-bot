@@ -180,6 +180,7 @@ describe("CLI argument parsing", () => {
 		dir?: string;
 		help?: boolean;
 		version?: boolean;
+		tut?: boolean;
 	} {
 		const options: {
 			token?: string;
@@ -187,6 +188,7 @@ describe("CLI argument parsing", () => {
 			dir?: string;
 			help?: boolean;
 			version?: boolean;
+			tut?: boolean;
 		} = {};
 
 		for (const arg of args) {
@@ -194,6 +196,8 @@ describe("CLI argument parsing", () => {
 				options.help = true;
 			} else if (arg === "--version" || arg === "-v") {
 				options.version = true;
+			} else if (arg === "tut" || arg === "tutorial") {
+				options.tut = true;
 			} else if (arg.startsWith("--token=")) {
 				options.token = arg.slice(8);
 			} else if (arg.startsWith("--users=")) {
@@ -220,6 +224,14 @@ describe("CLI argument parsing", () => {
 
 	test("parses -v shorthand", () => {
 		expect(parseArgs(["-v"])).toEqual({ version: true });
+	});
+
+	test("parses tut command", () => {
+		expect(parseArgs(["tut"])).toEqual({ tut: true });
+	});
+
+	test("parses tutorial command", () => {
+		expect(parseArgs(["tutorial"])).toEqual({ tut: true });
 	});
 
 	test("parses --token option", () => {
