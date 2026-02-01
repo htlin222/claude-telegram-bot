@@ -9,6 +9,7 @@ export {
 	handleCompact,
 	handleCost,
 	handleFile,
+	handleHandoff,
 	handleModel,
 	handleNew,
 	handlePending,

@@ -70,6 +70,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 2f. Handle handoff callbacks
+	if (callbackData.startsWith("handoff:")) {
+		await handleHandoffCallback(ctx, callbackData);
+		return;
+	}
+
 	// 3. Parse callback data: askuser:{request_id}:{option_index}
 	if (!callbackData.startsWith("askuser:")) {
 		await ctx.answerCallbackQuery();
@@ -525,6 +531,55 @@ async function handleBookmarkCallback(
 		default:
 			await ctx.answerCallbackQuery({ text: "Unknown action" });
 	}
+}
+
+/**
+ * Handle handoff callbacks.
+ * Format: handoff:go or handoff:cancel
+ */
+async function handleHandoffCallback(
+	ctx: Context,
+	callbackData: string,
+): Promise<void> {
+	const action = callbackData.split(":")[1];
+
+	if (action === "cancel") {
+		await ctx.answerCallbackQuery({ text: "Cancelled" });
+		try {
+			await ctx.editMessageText("❌ Handoff cancelled");
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	if (action === "go") {
+		const lastResponse = session.lastBotResponse;
+
+		if (!lastResponse) {
+			await ctx.answerCallbackQuery({ text: "No response to hand off" });
+			return;
+		}
+
+		// Save the response as handoff context
+		session.setHandoffContext(lastResponse);
+
+		// Kill session
+		await session.kill();
+
+		await ctx.answerCallbackQuery({ text: "Session compressed" });
+		try {
+			await ctx.editMessageText(
+				"✅ Session compressed.\n\n" +
+					"Your next message will include the previous context summary.",
+			);
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
 }
 
 /**

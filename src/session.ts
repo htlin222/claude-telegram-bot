@@ -125,6 +125,9 @@ class ClaudeSession {
 	// Last user message for retry functionality
 	private _lastUserMessage: string | null = null;
 
+	// Handoff context for session compression
+	private _handoffContext: string | null = null;
+
 	// Pending message queue
 	private _pendingMessages: Array<{
 		id: string;
@@ -144,6 +147,22 @@ class ClaudeSession {
 	 */
 	getLastUserMessage(): string | null {
 		return this._lastUserMessage;
+	}
+
+	/**
+	 * Set handoff context to inject into next new session.
+	 */
+	setHandoffContext(context: string): void {
+		this._handoffContext = context;
+	}
+
+	/**
+	 * Get and clear handoff context.
+	 */
+	consumeHandoffContext(): string | null {
+		const ctx = this._handoffContext;
+		this._handoffContext = null;
+		return ctx;
 	}
 
 	/**
@@ -346,7 +365,14 @@ class ClaudeSession {
 					timeZoneName: "short",
 				},
 			)}]\n\n`;
-			messageToSend = datePrefix + message;
+
+			// Check for handoff context from previous session
+			const handoff = this.consumeHandoffContext();
+			if (handoff) {
+				messageToSend = `${datePrefix}[Previous session summary]\n${handoff}\n\n[New request]\n${message}`;
+			} else {
+				messageToSend = datePrefix + message;
+			}
 		}
 
 		// Build SDK V1 options - supports all features
@@ -706,9 +732,7 @@ class ClaudeSession {
 		await statusCallback("done", "");
 
 		const finalResponse =
-			forcedResponse ||
-			responseParts.join("") ||
-			"No response from Claude.";
+			forcedResponse || responseParts.join("") || "No response from Claude.";
 		this.lastBotResponse = finalResponse;
 		return finalResponse;
 	}

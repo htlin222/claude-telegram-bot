@@ -37,6 +37,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 			`/status - Show detailed status\n` +
 			`/resume - Resume last session\n` +
 			`/retry - Retry last message\n` +
+			`/handoff - Compress: carry last response to new session\n` +
 			`/cd - Change working directory\n` +
 			`/file - Download a file\n` +
 			`/bookmarks - Manage directory bookmarks\n` +
@@ -549,6 +550,57 @@ export async function handleCompact(ctx: Context): Promise<void> {
 	} as Context;
 
 	await handleText(fakeCtx);
+}
+
+/**
+ * Escape HTML special characters for Telegram.
+ */
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+}
+
+/**
+ * /handoff - Start fresh session with last response as context.
+ */
+export async function handleHandoff(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	const lastResponse = session.lastBotResponse;
+
+	if (!lastResponse) {
+		await ctx.reply(
+			"❌ No previous response to carry forward.\nUse /new for a fresh start.",
+		);
+		return;
+	}
+
+	// Preview what will be carried forward (truncated)
+	const preview =
+		lastResponse.length > 500
+			? `${lastResponse.slice(0, 500)}...`
+			: lastResponse;
+
+	const keyboard = new InlineKeyboard()
+		.text("✅ Handoff & Continue", "handoff:go")
+		.text("❌ Cancel", "handoff:cancel");
+
+	await ctx.reply(
+		`📦 <b>Context Handoff</b>\n\n` +
+			`This will:\n` +
+			`1. Clear current session\n` +
+			`2. Start fresh with last response as context\n\n` +
+			`<b>Last response preview:</b>\n` +
+			`<code>${escapeHtml(preview)}</code>`,
+		{ parse_mode: "HTML", reply_markup: keyboard },
+	);
 }
 
 /**

@@ -21,6 +21,7 @@ import {
 	handleCost,
 	handleDocument,
 	handleFile,
+	handleHandoff,
 	handleModel,
 	handleNew,
 	handlePending,
@@ -66,6 +67,7 @@ bot.command("cost", handleCost);
 bot.command("think", handleThink);
 bot.command("plan", handlePlan);
 bot.command("compact", handleCompact);
+bot.command("handoff", handleHandoff);
 bot.command("undo", handleUndo);
 bot.command("bookmarks", handleBookmarks);
 bot.command("pending", handlePending);
