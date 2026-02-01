@@ -31,6 +31,8 @@ import { checkPendingAskUserRequests } from "./handlers/streaming";
 import { checkCommandSafety, isPathAllowed } from "./security";
 import type { SessionData, StatusCallback, TokenUsage } from "./types";
 
+const SESSION_VERSION = 1;
+
 /**
  * Determine thinking token budget based on message keywords.
  * Exported for testing.
@@ -674,6 +676,7 @@ class ClaudeSession {
 
 		try {
 			const data: SessionData = {
+				version: SESSION_VERSION,
 				session_id: this.sessionId,
 				saved_at: new Date().toISOString(),
 				working_dir: this._workingDir,
@@ -719,6 +722,13 @@ class ClaudeSession {
 
 			if (!data.session_id) {
 				return [false, "Saved session file is empty"];
+			}
+
+			if (data.version !== SESSION_VERSION) {
+				return [
+					false,
+					`Session version mismatch (found v${data.version ?? 0}, expected v${SESSION_VERSION})`,
+				];
 			}
 
 			if (data.working_dir && data.working_dir !== this._workingDir) {
