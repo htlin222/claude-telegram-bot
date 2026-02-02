@@ -7,8 +7,6 @@
 
 Send text, voice, photos, and documents. See responses and tools usage in real-time.
 
-![Demo](assets/demo.gif)
-
 ## Claude Code as a Personal Assistant
 
 I've started using Claude Code as a personal assistant, and I've built this bot so I can access it from anywhere.
