@@ -5,9 +5,14 @@
  */
 
 import { unlinkSync } from "node:fs";
-import type { Context } from "grammy";
+import { InlineKeyboard, type Context } from "grammy";
 import { addBookmark, removeBookmark } from "../bookmarks";
-import { ALLOWED_USERS, MESSAGE_EFFECTS } from "../config";
+import {
+	AGENT_PROVIDERS,
+	ALLOWED_USERS,
+	MESSAGE_EFFECTS,
+	type AgentProviderId,
+} from "../config";
 import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
@@ -73,6 +78,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 	// 2f. Handle handoff callbacks
 	if (callbackData.startsWith("handoff:")) {
 		await handleHandoffCallback(ctx, callbackData);
+		return;
+	}
+
+	// 2g. Handle provider callbacks
+	if (callbackData.startsWith("provider:")) {
+		await handleProviderCallback(ctx, callbackData);
 		return;
 	}
 
@@ -580,6 +591,53 @@ async function handleHandoffCallback(
 	}
 
 	await ctx.answerCallbackQuery({ text: "Unknown action" });
+}
+
+/**
+ * Handle provider switch callbacks.
+ * Format: provider:set:{name}
+ */
+async function handleProviderCallback(
+	ctx: Context,
+	callbackData: string,
+): Promise<void> {
+	const parts = callbackData.split(":");
+	const action = parts[1];
+	const provider = parts[2] as AgentProviderId | undefined;
+
+	if (action !== "set" || !provider) {
+		await ctx.answerCallbackQuery({ text: "Invalid provider action" });
+		return;
+	}
+
+	if (!AGENT_PROVIDERS.includes(provider)) {
+		await ctx.answerCallbackQuery({ text: "Unknown provider" });
+		return;
+	}
+
+	const [success, message] = await session.setProvider(provider);
+	if (!success) {
+		await ctx.answerCallbackQuery({ text: message });
+		return;
+	}
+
+	const current = session.currentProvider;
+	const keyboard = new InlineKeyboard();
+	for (const option of AGENT_PROVIDERS) {
+		const label = option === current ? `✅ ${option}` : `⚪️ ${option}`;
+		keyboard.text(label, `provider:set:${option}`).row();
+	}
+
+	try {
+		await ctx.editMessageText(
+			`🔀 <b>Provider Selection</b>\n\nCurrent: <b>${current}</b>\n\nChoose a provider below:`,
+			{ parse_mode: "HTML", reply_markup: keyboard },
+		);
+	} catch {
+		await ctx.reply(`🔀 ${message}`, { parse_mode: "HTML" });
+	}
+
+	await ctx.answerCallbackQuery({ text: `Switched to ${current}` });
 }
 
 /**

@@ -11,6 +11,7 @@ export {
 	handleFile,
 	handleHandoff,
 	handleModel,
+	handleProvider,
 	handleNew,
 	handlePending,
 	handlePlan,

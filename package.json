@@ -12,7 +12,10 @@
     "ctb": "bun run src/cli.ts",
     "typecheck": "bun run --bun tsc --noEmit",
     "test": "bun test",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "docs:html": "bunx typedoc --options typedoc.json",
+    "docs:md": "bunx typedoc --options typedoc.md.json",
+    "docs": "bun run docs:html && bun run docs:md"
   },
   "keywords": [
     "claude",
@@ -32,7 +35,9 @@
     "bun": ">=1.0.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typedoc": "^0.28.16",
+    "typedoc-plugin-markdown": "^4.9.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -41,6 +46,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@grammyjs/runner": "^2.0.3",
     "@modelcontextprotocol/sdk": "^1.25.1",
+    "@openai/codex-sdk": "^0.93.0",
     "grammy": "^1.38.4",
     "openai": "^6.15.0",
     "zod": "^4.2.1"

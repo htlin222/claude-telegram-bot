@@ -1,0 +1,10 @@
+{
+  "entryPoints": ["src/**/*.ts"],
+  "entryPointStrategy": "expand",
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+  "out": "docs/html",
+  "tsconfig": "tsconfig.json",
+  "excludeExternals": true,
+  "readme": "none",
+  "hideGenerator": true
+}

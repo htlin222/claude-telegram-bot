@@ -1,0 +1,11 @@
+{
+  "entryPoints": ["src/**/*.ts"],
+  "entryPointStrategy": "expand",
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+  "out": "docs/markdown",
+  "tsconfig": "tsconfig.json",
+  "excludeExternals": true,
+  "readme": "none",
+  "hideGenerator": true,
+  "plugin": ["typedoc-plugin-markdown"]
+}

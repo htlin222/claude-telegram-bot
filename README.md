@@ -104,6 +104,7 @@ resume - Resume last session
 stop - Interrupt current query
 status - Check what Claude is doing
 model - Switch model (sonnet, opus, haiku)
+provider - Switch agent provider
 cost - Show token usage and estimated cost
 think - Force thinking mode
 plan - Toggle planning mode
@@ -129,6 +130,9 @@ TELEGRAM_ALLOWED_USERS=123456789           # Your Telegram user ID
 # Recommended
 CLAUDE_WORKING_DIR=/path/to/your/folder    # Where Claude runs (loads CLAUDE.md, skills, MCP)
 OPENAI_API_KEY=sk-...                      # For voice transcription
+# Optional
+AGENT_PROVIDER=claude                      # claude (default); codex is reserved/experimental
+CODEX_NODE_PATH=node                       # Optional: override Node.js path for Codex SDK worker
 ```
 
 **Finding your Telegram user ID:** Message [@userinfobot](https://t.me/userinfobot) on Telegram.
@@ -144,6 +148,24 @@ To customize, set `ALLOWED_PATHS` in `.env` (comma-separated). Note: this **over
 ```bash
 ALLOWED_PATHS=/your/project,/other/path,~/.claude
 ```
+
+### Optional: Codex Provider (Experimental)
+
+This project can run against the Codex SDK via a Node.js worker process. It does **not** replace Claude by default.
+
+Requirements:
+
+- Node.js 18+
+- `@openai/codex-sdk` installed
+- Codex SDK authentication configured (see Codex SDK docs)
+
+Enable it by setting:
+
+```bash
+AGENT_PROVIDER=codex
+```
+
+If Node isn’t on your PATH, set `CODEX_NODE_PATH` to the full `node` binary path.
 
 ### 3. Configure MCP Servers (Optional)
 
@@ -177,6 +199,7 @@ The bot includes a built-in `ask_user` MCP server that lets Claude present optio
 | Command         | Description                                 |
 | --------------- | ------------------------------------------- |
 | `/model <name>` | Switch model: sonnet, opus, haiku           |
+| `/provider`     | Switch agent provider (buttons)             |
 | `/think [lvl]`  | Force thinking: off, normal, deep (default) |
 | `/plan`         | Toggle planning mode (no tool execution)    |
 | `/compact`      | Trigger context compaction                  |
@@ -258,6 +281,19 @@ bun run typecheck
 # Or directly
 bun run --bun tsc --noEmit
 ```
+
+## API Docs
+
+Generate TypeDoc docs (HTML + Markdown):
+
+```bash
+bun run docs
+```
+
+Outputs:
+
+- `docs/html/` (HTML; published to GitHub Pages)
+- `docs/markdown/` (Markdown; TypeDoc plugin output)
 
 ## Security
 

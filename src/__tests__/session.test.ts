@@ -469,4 +469,32 @@ describe("ClaudeSession", () => {
 			}
 		});
 	});
+
+	describe("provider switching", () => {
+		test("setProvider blocks while running", async () => {
+			const cleanup = session.startProcessing();
+			const [success, message] = await session.setProvider("codex");
+			cleanup();
+			expect(success).toBe(false);
+			expect(message).toContain("Session is running");
+		});
+
+		test("setProvider switches providers and clears session", async () => {
+			session.sessionId = "test-session-123";
+			const current = session.currentProvider;
+			const target = current === "claude" ? "codex" : "claude";
+			const [success, message] = await session.setProvider(target);
+			expect(success).toBe(true);
+			expect(message).toContain(`Switched provider to ${target}`);
+			expect(session.currentProvider).toBe(target);
+			expect(session.sessionId).toBeNull();
+		});
+
+		test("setProvider rejects same provider", async () => {
+			const current = session.currentProvider;
+			const [success, message] = await session.setProvider(current);
+			expect(success).toBe(false);
+			expect(message).toContain("Already using provider");
+		});
+	});
 });

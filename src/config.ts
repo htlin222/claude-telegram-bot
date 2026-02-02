@@ -45,6 +45,20 @@ export const ALLOWED_USERS: number[] = (
 export const WORKING_DIR = process.env.CLAUDE_WORKING_DIR || HOME;
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
+export type AgentProviderId = "claude" | "codex";
+export const AGENT_PROVIDERS: AgentProviderId[] = ["claude", "codex"];
+const agentProviderEnv = (process.env.AGENT_PROVIDER || "claude").toLowerCase();
+export const AGENT_PROVIDER: AgentProviderId = AGENT_PROVIDERS.includes(
+	agentProviderEnv as AgentProviderId,
+)
+	? (agentProviderEnv as AgentProviderId)
+	: "claude";
+if (!AGENT_PROVIDERS.includes(agentProviderEnv as AgentProviderId)) {
+	console.warn(
+		`Unknown AGENT_PROVIDER "${agentProviderEnv}", falling back to "claude".`,
+	);
+}
+
 // ============== Claude CLI Path ==============
 
 // Auto-detect from PATH, or use environment override

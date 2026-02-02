@@ -23,6 +23,7 @@ import {
 	handleFile,
 	handleHandoff,
 	handleModel,
+	handleProvider,
 	handleNew,
 	handlePending,
 	handlePhoto,
@@ -63,6 +64,7 @@ bot.command("cd", handleCd);
 bot.command("skill", handleSkill);
 bot.command("file", handleFile);
 bot.command("model", handleModel);
+bot.command("provider", handleProvider);
 bot.command("cost", handleCost);
 bot.command("think", handleThink);
 bot.command("plan", handlePlan);

@@ -8,7 +8,12 @@ import { existsSync, statSync } from "node:fs";
 import type { Context } from "grammy";
 import { InlineKeyboard, InputFile } from "grammy";
 import { isBookmarked, loadBookmarks, resolvePath } from "../bookmarks";
-import { ALLOWED_USERS, RESTART_FILE } from "../config";
+import {
+	AGENT_PROVIDERS,
+	ALLOWED_USERS,
+	RESTART_FILE,
+	type AgentProviderId,
+} from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
 import { session } from "../session";
 import { startTypingIndicator } from "../utils";
@@ -44,6 +49,7 @@ Working directory: <code>${workDir}</code>
 
 <b>Model:</b>
 /model - Switch model (sonnet/opus/haiku)
+/provider - Switch agent provider
 /think - Force extended thinking
 /plan - Toggle planning mode
 /compact - Trigger context compaction
@@ -147,6 +153,9 @@ export async function handleStatus(ctx: Context): Promise<void> {
 	} else {
 		lines.push("⚪ Session: None");
 	}
+
+	// Provider status
+	lines.push(`🤖 Provider: <b>${session.currentProvider}</b>`);
 
 	// Query status
 	if (session.isRunning) {
@@ -430,6 +439,54 @@ export async function handleModel(ctx: Context): Promise<void> {
 }
 
 /**
+ * /provider - Switch between agent providers.
+ */
+export async function handleProvider(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	const text = ctx.message?.text || "";
+	const match = text.match(/^\/provider\s+(\w+)$/i);
+
+	if (!match) {
+		const current = session.currentProvider;
+		const keyboard = new InlineKeyboard();
+		for (const provider of AGENT_PROVIDERS) {
+			const label =
+				provider === current
+					? `✅ ${provider}`
+					: `⚪️ ${provider}`;
+			keyboard.text(label, `provider:set:${provider}`).row();
+		}
+
+		await ctx.reply(
+			`🔀 <b>Provider Selection</b>\n\nCurrent: <b>${current}</b>\n\nChoose a provider below:`,
+			{ parse_mode: "HTML", reply_markup: keyboard },
+		);
+		return;
+	}
+
+	const providerName = match[1]?.toLowerCase() as AgentProviderId | undefined;
+	if (!providerName || !AGENT_PROVIDERS.includes(providerName)) {
+		await ctx.reply(
+			`❌ Unknown provider: ${providerName}\n\nAvailable: ${AGENT_PROVIDERS.join(
+				", ",
+			)}`,
+		);
+		return;
+	}
+
+	const [success, message] = await session.setProvider(providerName);
+	await ctx.reply(success ? `🔀 ${message}` : `❌ ${message}`, {
+		parse_mode: "HTML",
+	});
+}
+
+/**
  * /cost - Show token usage and estimated cost.
  */
 export async function handleCost(ctx: Context): Promise<void> {
@@ -625,9 +682,15 @@ export async function handleUndo(ctx: Context): Promise<void> {
 	try {
 		const [success, message] = await session.undo();
 
+		const chatId = ctx.chat?.id;
+		if (!chatId) {
+			await ctx.reply("❌ Unable to determine chat ID.");
+			return;
+		}
+
 		// Update status message with result
 		await ctx.api.editMessageText(
-			ctx.chat?.id,
+			chatId,
 			statusMsg.message_id,
 			success ? message : `❌ ${message}`,
 			{ parse_mode: "HTML" },

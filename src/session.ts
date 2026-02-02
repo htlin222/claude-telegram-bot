@@ -7,11 +7,13 @@
 
 import { readFileSync } from "node:fs";
 import {
-	type Options,
-	type Query,
-	query,
-	type SDKMessage,
-} from "@anthropic-ai/claude-agent-sdk";
+	ClaudeProvider,
+	type ClaudeOptions as Options,
+	type ClaudeQuery as Query,
+	type ClaudeSDKMessage as SDKMessage,
+} from "./providers/claude";
+import { CodexProvider } from "./providers/codex";
+import type { AgentProvider } from "./providers/types";
 import type { Context } from "grammy";
 import {
 	ALLOWED_PATHS,
@@ -26,6 +28,9 @@ import {
 	THINKING_KEYWORDS,
 	TIMEOUT_PROMPT_WAIT_MS,
 	WORKING_DIR,
+	AGENT_PROVIDER,
+	type AgentProviderId,
+	AGENT_PROVIDERS,
 } from "./config";
 import { botEvents } from "./events";
 import { formatToolStatus } from "./formatting";
@@ -70,6 +75,23 @@ function _getTextFromMessage(msg: SDKMessage): string | null {
 		}
 	}
 	return textParts.length > 0 ? textParts.join("") : null;
+}
+
+function createProvider(
+	providerId: AgentProviderId,
+): AgentProvider<SDKMessage, Options, Query> {
+	if (providerId === "codex") {
+		return new CodexProvider();
+	}
+	return new ClaudeProvider();
+}
+
+function resolveProvider(): {
+	provider: AgentProvider<SDKMessage, Options, Query>;
+	id: AgentProviderId;
+} {
+	const id = AGENT_PROVIDER;
+	return { provider: createProvider(id), id };
 }
 
 /**
@@ -134,6 +156,9 @@ class ClaudeSession {
 		text: string;
 		timestamp: Date;
 	}> = [];
+
+	private provider: AgentProvider<SDKMessage, Options, Query>;
+	private providerId: AgentProviderId;
 
 	/**
 	 * Set the user's response to a timeout check prompt.
@@ -205,7 +230,15 @@ class ClaudeSession {
 		return this._pendingMessages.length;
 	}
 
-	constructor() {
+	constructor(provider?: AgentProvider<SDKMessage, Options, Query>) {
+		if (provider) {
+			this.provider = provider;
+			this.providerId = provider.id as AgentProviderId;
+		} else {
+			const resolved = resolveProvider();
+			this.provider = resolved.provider;
+			this.providerId = resolved.id;
+		}
 		botEvents.on("interruptRequested", () => {
 			if (this.isRunning) {
 				this.markInterrupt();
@@ -216,6 +249,33 @@ class ClaudeSession {
 
 	get workingDir(): string {
 		return this._workingDir;
+	}
+
+	get currentProvider(): AgentProviderId {
+		return this.providerId;
+	}
+
+	async setProvider(
+		providerId: AgentProviderId,
+	): Promise<[boolean, string]> {
+		if (!AGENT_PROVIDERS.includes(providerId)) {
+			return [false, `Unknown provider: ${providerId}`];
+		}
+		if (this.isRunning) {
+			return [false, "Session is running. Stop it before switching provider."];
+		}
+		if (this.providerId === providerId) {
+			return [false, `Already using provider: ${providerId}`];
+		}
+
+		await this.kill();
+		this.provider = createProvider(providerId);
+		this.providerId = providerId;
+
+		return [
+			true,
+			`Switched provider to ${providerId}. Session cleared; next message starts fresh.`,
+		];
 	}
 
 	/**
@@ -448,13 +508,11 @@ class ClaudeSession {
 		let forcedResponse: string | null = null;
 
 		try {
-			// Use V1 query() API - supports all options including cwd, mcpServers, etc.
-			const queryInstance = query({
+			// Use provider query - supports all options including cwd, mcpServers, etc.
+			const queryInstance = this.provider.createQuery({
 				prompt: messageToSend,
-				options: {
-					...options,
-					abortController: this.abortController,
-				},
+				options,
+				abortController: this.abortController,
 			});
 
 			// Store query instance for /undo support

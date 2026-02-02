@@ -23,6 +23,7 @@ import {
 	handleDocument,
 	handleFile,
 	handleModel,
+	handleProvider,
 	handleNew,
 	handlePhoto,
 	handlePlan,
@@ -79,6 +80,7 @@ bot.command("cd", handleCd);
 bot.command("skill", handleSkill);
 bot.command("file", handleFile);
 bot.command("model", handleModel);
+bot.command("provider", handleProvider);
 bot.command("cost", handleCost);
 bot.command("think", handleThink);
 bot.command("plan", handlePlan);
@@ -134,6 +136,7 @@ await bot.api.setMyCommands([
 	{ command: "handoff", description: "Carry response to new session" },
 	{ command: "pending", description: "Show queued messages" },
 	{ command: "model", description: "Switch model (sonnet/opus/haiku)" },
+	{ command: "provider", description: "Switch agent provider" },
 	{ command: "think", description: "Force extended thinking" },
 	{ command: "plan", description: "Toggle planning mode" },
 	{ command: "compact", description: "Trigger context compaction" },
