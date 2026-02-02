@@ -293,7 +293,7 @@ export function createStatusCallback(
 					.text("Undo", "action:undo")
 					.text("Test", "action:test")
 					.text("Commit", "action:commit");
-				await ctx.reply("─", {
+				await ctx.reply("✅ Done", {
 					reply_markup: actionKeyboard,
 					message_effect_id: MESSAGE_EFFECTS.CONFETTI,
 				});
