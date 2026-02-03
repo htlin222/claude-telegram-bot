@@ -20,6 +20,7 @@ import {
 	handleCd,
 	handleCompact,
 	handleCost,
+	handleDiff,
 	handleDocument,
 	handleFile,
 	handleHandoff,
@@ -81,6 +82,7 @@ bot.command("undo", handleUndo);
 bot.command("bookmarks", handleBookmarks);
 bot.command("pending", handlePending);
 bot.command("q", handlePending); // Alias for queue
+bot.command("diff", handleDiff);
 
 // ============== Message Handlers ==============
 

@@ -9,6 +9,7 @@ export {
 	handleCd,
 	handleCompact,
 	handleCost,
+	handleDiff,
 	handleFile,
 	handleHandoff,
 	handleMerge,

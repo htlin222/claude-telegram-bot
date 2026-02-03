@@ -17,7 +17,12 @@ import {
 import { isAuthorized, isPathAllowed } from "../security";
 import { session } from "../session";
 import { startTypingIndicator } from "../utils";
-import { getMergeInfo, listBranches } from "../worktree";
+import {
+	getCombinedDiff,
+	getGitDiff,
+	getMergeInfo,
+	listBranches,
+} from "../worktree";
 
 /**
  * /start - Show welcome message and status.
@@ -61,6 +66,7 @@ Working directory: <code>${workDir}</code>
 /worktree - Create and enter a git worktree
 /branch - Switch to a branch worktree
 /merge - Merge current branch into main
+/diff - View uncommitted changes
 /file - Download a file
 /undo - Revert file changes
 /skill - Invoke Claude Code skill
@@ -1061,6 +1067,87 @@ export async function handleBookmarks(ctx: Context): Promise<void> {
 			.text(`🆕 ${bookmark.name}`, `bookmark:new:${bookmark.path}`)
 			.text("🗑️", `bookmark:remove:${bookmark.path}`)
 			.row();
+	}
+
+	await ctx.reply(message, {
+		parse_mode: "HTML",
+		reply_markup: keyboard,
+	});
+}
+
+/**
+ * /diff - Show uncommitted changes with interactive buttons.
+ * Variants:
+ *   /diff - Show all uncommitted changes (staged + unstaged)
+ *   /diff staged - Show only staged changes
+ *   /diff <file> - Show diff for specific file
+ */
+export async function handleDiff(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	// Parse arguments
+	const text = ctx.message?.text || "";
+	const match = text.match(/^\/diff(?:\s+(.+))?$/);
+	const arg = match?.[1]?.trim();
+
+	const isStaged = arg === "staged";
+	const file = arg && arg !== "staged" ? arg : undefined;
+
+	// Get diff based on arguments
+	const result = isStaged
+		? await getGitDiff(session.workingDir, { staged: true })
+		: file
+			? await getCombinedDiff(session.workingDir, { file })
+			: await getCombinedDiff(session.workingDir);
+
+	if (!result.success) {
+		await ctx.reply(`❌ ${result.message}`);
+		return;
+	}
+
+	if (!result.hasChanges) {
+		await ctx.reply("✨ No uncommitted changes.");
+		return;
+	}
+
+	// Build summary message
+	let message = "📝 <b>Uncommitted Changes</b>";
+	if (isStaged) {
+		message += " (staged)";
+	} else if (file) {
+		message += ` (<code>${escapeHtml(file)}</code>)`;
+	}
+	message += "\n\n";
+
+	// Add file summary
+	for (const item of result.summary) {
+		message += `<code>${escapeHtml(item.file)}</code> (+${item.added}, -${item.removed})\n`;
+	}
+
+	// Count lines in full diff
+	const diffLines = result.fullDiff.split("\n").length;
+	const DIFF_LINE_THRESHOLD = 50;
+
+	// Build inline keyboard
+	const keyboard = new InlineKeyboard();
+
+	// Encode options for callback
+	const opts = isStaged ? "staged" : file ? `file:${file}` : "all";
+	const encodedOpts = Buffer.from(opts).toString("base64");
+
+	keyboard.text("📄 View Diff", `diff:view:${encodedOpts}`);
+	keyboard.text("💾 Commit", "diff:commit");
+	keyboard.row();
+	keyboard.text("⚠️ Revert All", "diff:revert");
+
+	// If diff is large, mention it
+	if (diffLines > DIFF_LINE_THRESHOLD) {
+		message += `\n<i>(${diffLines} lines - will send as file)</i>`;
 	}
 
 	await ctx.reply(message, {

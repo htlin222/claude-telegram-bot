@@ -17,7 +17,13 @@ import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
 import { logNonCriticalError } from "../utils/error-logging";
-import { createOrReuseWorktree, getMergeInfo } from "../worktree";
+import {
+	createOrReuseWorktree,
+	getCombinedDiff,
+	getGitDiff,
+	getMergeInfo,
+	revertAllChanges,
+} from "../worktree";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { execShellCommand } from "./text";
 
@@ -98,6 +104,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 	// 2i. Handle merge callbacks
 	if (callbackData.startsWith("merge:")) {
 		await handleMergeCallback(ctx, userId, username, callbackData);
+		return;
+	}
+
+	// 2j. Handle diff callbacks
+	if (callbackData.startsWith("diff:")) {
+		await handleDiffCallback(ctx, userId, username, callbackData);
 		return;
 	}
 
@@ -852,4 +864,181 @@ If the merge is clean, just complete it. If there are conflicts, explain what yo
 	} finally {
 		typing.stop();
 	}
+}
+
+/**
+ * Handle diff callbacks.
+ * Format: diff:view:{base64opts}, diff:commit, diff:revert, diff:revert:confirm
+ */
+async function handleDiffCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	callbackData: string,
+): Promise<void> {
+	const parts = callbackData.split(":");
+	const action = parts[1];
+
+	if (action === "view") {
+		// Decode options
+		const encodedOpts = parts.slice(2).join(":");
+		let opts = "all";
+		try {
+			opts = Buffer.from(encodedOpts, "base64").toString("utf-8");
+		} catch {
+			// Default to all
+		}
+
+		// Parse options
+		const isStaged = opts === "staged";
+		const file = opts.startsWith("file:") ? opts.slice(5) : undefined;
+
+		// Get diff
+		const result = isStaged
+			? await getGitDiff(session.workingDir, { staged: true })
+			: file
+				? await getCombinedDiff(session.workingDir, { file })
+				: await getCombinedDiff(session.workingDir);
+
+		if (!result.success) {
+			await ctx.answerCallbackQuery({ text: result.message });
+			return;
+		}
+
+		if (!result.hasChanges) {
+			await ctx.answerCallbackQuery({ text: "No changes to show" });
+			return;
+		}
+
+		const diffLines = result.fullDiff.split("\n").length;
+		const DIFF_LINE_THRESHOLD = 50;
+
+		if (diffLines > DIFF_LINE_THRESHOLD) {
+			// Send as file
+			await ctx.answerCallbackQuery({ text: "Sending diff file..." });
+
+			const { InputFile } = await import("grammy");
+			const diffBuffer = Buffer.from(result.fullDiff, "utf-8");
+			const filename = file
+				? `${file.replace(/\//g, "_")}.diff`
+				: "changes.diff";
+			await ctx.replyWithDocument(new InputFile(diffBuffer, filename));
+		} else {
+			// Send as HTML pre block
+			await ctx.answerCallbackQuery({ text: "Showing diff..." });
+
+			const escapedDiff = result.fullDiff
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+
+			// Truncate if too long for Telegram message
+			const maxLen = 4000;
+			const truncated =
+				escapedDiff.length > maxLen
+					? `${escapedDiff.slice(0, maxLen)}...(truncated)`
+					: escapedDiff;
+
+			await ctx.reply(`<pre>${truncated}</pre>`, { parse_mode: "HTML" });
+		}
+		return;
+	}
+
+	if (action === "commit") {
+		await ctx.answerCallbackQuery({ text: "Starting commit flow..." });
+
+		// Delete the diff message
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+
+		// Send commit command to Claude
+		const typing = startTypingIndicator(ctx);
+		const state = new StreamingState();
+		const statusCallback = createStatusCallback(ctx, state);
+		const chatId = ctx.chat?.id;
+
+		try {
+			const response = await session.sendMessageStreaming(
+				"/commit",
+				username,
+				userId,
+				statusCallback,
+				chatId,
+				ctx,
+			);
+
+			await auditLog(userId, username, "DIFF_COMMIT", "/commit", response);
+		} catch (error) {
+			console.error("Commit error:", error);
+			await ctx.reply(`❌ Commit failed: ${String(error).slice(0, 200)}`);
+		} finally {
+			typing.stop();
+		}
+		return;
+	}
+
+	if (action === "revert") {
+		const subAction = parts[2];
+
+		if (subAction === "cancel") {
+			await ctx.answerCallbackQuery({ text: "Cancelled" });
+			try {
+				await ctx.deleteMessage();
+			} catch {
+				// Message may have been deleted
+			}
+			return;
+		}
+
+		if (subAction === "confirm") {
+			// Execute revert
+			await ctx.answerCallbackQuery({ text: "Reverting..." });
+
+			const result = await revertAllChanges(session.workingDir);
+
+			try {
+				await ctx.editMessageText(
+					result.success ? "✅ All changes reverted." : `❌ ${result.message}`,
+				);
+			} catch {
+				await ctx.reply(
+					result.success ? "✅ All changes reverted." : `❌ ${result.message}`,
+				);
+			}
+
+			await auditLog(
+				userId,
+				username,
+				"DIFF_REVERT",
+				"revert all",
+				result.message,
+			);
+			return;
+		}
+
+		// Show confirmation dialog (no subAction)
+		await ctx.answerCallbackQuery({ text: "Confirm revert?" });
+
+		const keyboard = new InlineKeyboard()
+			.text("⚠️ Yes, Revert All", "diff:revert:confirm")
+			.text("Cancel", "diff:revert:cancel");
+
+		try {
+			await ctx.editMessageText(
+				"⚠️ <b>Confirm Revert</b>\n\nThis will discard ALL uncommitted changes (staged and unstaged).\n\n<b>This action cannot be undone!</b>",
+				{ parse_mode: "HTML", reply_markup: keyboard },
+			);
+		} catch {
+			await ctx.reply(
+				"⚠️ <b>Confirm Revert</b>\n\nThis will discard ALL uncommitted changes.\n\n<b>This action cannot be undone!</b>",
+				{ parse_mode: "HTML", reply_markup: keyboard },
+			);
+		}
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
 }

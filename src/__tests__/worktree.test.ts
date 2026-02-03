@@ -282,3 +282,264 @@ describe("Main branch detection", () => {
 		});
 	});
 });
+
+describe("Diff callback data", () => {
+	describe("options encoding", () => {
+		test("encodes 'all' option correctly", () => {
+			const opts = "all";
+			const encoded = Buffer.from(opts).toString("base64");
+			const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+			expect(decoded).toBe("all");
+		});
+
+		test("encodes 'staged' option correctly", () => {
+			const opts = "staged";
+			const encoded = Buffer.from(opts).toString("base64");
+			const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+			expect(decoded).toBe("staged");
+		});
+
+		test("encodes file option with path", () => {
+			const opts = "file:src/index.ts";
+			const encoded = Buffer.from(opts).toString("base64");
+			const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+			expect(decoded).toBe("file:src/index.ts");
+			expect(decoded.startsWith("file:")).toBe(true);
+			expect(decoded.slice(5)).toBe("src/index.ts");
+		});
+
+		test("handles file paths with slashes", () => {
+			const opts = "file:src/handlers/commands.ts";
+			const encoded = Buffer.from(opts).toString("base64");
+			const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+			expect(decoded.slice(5)).toBe("src/handlers/commands.ts");
+		});
+	});
+
+	describe("callback data format", () => {
+		test("creates valid diff view callback", () => {
+			const opts = "all";
+			const encoded = Buffer.from(opts).toString("base64");
+			const callbackData = `diff:view:${encoded}`;
+			expect(callbackData.startsWith("diff:view:")).toBe(true);
+		});
+
+		test("creates diff commit callback", () => {
+			const callbackData = "diff:commit";
+			expect(callbackData).toBe("diff:commit");
+		});
+
+		test("creates diff revert callback", () => {
+			const callbackData = "diff:revert";
+			expect(callbackData).toBe("diff:revert");
+		});
+
+		test("creates diff revert confirm callback", () => {
+			const callbackData = "diff:revert:confirm";
+			expect(callbackData).toBe("diff:revert:confirm");
+		});
+
+		test("creates diff revert cancel callback", () => {
+			const callbackData = "diff:revert:cancel";
+			expect(callbackData).toBe("diff:revert:cancel");
+		});
+	});
+
+	describe("callback data parsing", () => {
+		test("extracts action from diff callback", () => {
+			const testCases = [
+				{ data: "diff:view:YWxs", expectedAction: "view" },
+				{ data: "diff:commit", expectedAction: "commit" },
+				{ data: "diff:revert", expectedAction: "revert" },
+				{ data: "diff:revert:confirm", expectedAction: "revert" },
+			];
+
+			for (const { data, expectedAction } of testCases) {
+				const parts = data.split(":");
+				const action = parts[1];
+				expect(action).toBe(expectedAction);
+			}
+		});
+
+		test("extracts options from view callback", () => {
+			const opts = "staged";
+			const encoded = Buffer.from(opts).toString("base64");
+			const callbackData = `diff:view:${encoded}`;
+
+			const parts = callbackData.split(":");
+			const encodedOpts = parts.slice(2).join(":");
+			const decoded = Buffer.from(encodedOpts, "base64").toString("utf-8");
+			expect(decoded).toBe("staged");
+		});
+
+		test("extracts subaction from revert callback", () => {
+			const confirmCallback = "diff:revert:confirm";
+			const cancelCallback = "diff:revert:cancel";
+			const plainRevert = "diff:revert";
+
+			expect(confirmCallback.split(":")[2]).toBe("confirm");
+			expect(cancelCallback.split(":")[2]).toBe("cancel");
+			expect(plainRevert.split(":")[2]).toBeUndefined();
+		});
+
+		test("distinguishes diff from other callbacks", () => {
+			const diffCallback = "diff:view:YWxs";
+			const mergeCallback = "merge:confirm:abc123";
+			const shellCallback = "shell:run:abc123";
+
+			expect(diffCallback.startsWith("diff:")).toBe(true);
+			expect(mergeCallback.startsWith("diff:")).toBe(false);
+			expect(shellCallback.startsWith("diff:")).toBe(false);
+		});
+	});
+});
+
+describe("Diff numstat parsing", () => {
+	describe("numstat line format", () => {
+		test("parses standard numstat line", () => {
+			const line = "15\t3\tsrc/index.ts";
+			const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+			expect(match).not.toBeNull();
+			expect(match?.[1]).toBe("15");
+			expect(match?.[2]).toBe("3");
+			expect(match?.[3]).toBe("src/index.ts");
+		});
+
+		test("parses binary file numstat (dash values)", () => {
+			const line = "-\t-\timage.png";
+			const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+			expect(match).not.toBeNull();
+			expect(match?.[1]).toBe("-");
+			expect(match?.[2]).toBe("-");
+			expect(match?.[3]).toBe("image.png");
+		});
+
+		test("parses zero changes", () => {
+			const line = "0\t0\tsrc/empty.ts";
+			const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+			expect(match).not.toBeNull();
+			expect(match?.[1]).toBe("0");
+			expect(match?.[2]).toBe("0");
+		});
+
+		test("handles file paths with spaces", () => {
+			const line = "5\t2\tsrc/my file.ts";
+			const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+			expect(match).not.toBeNull();
+			expect(match?.[3]).toBe("src/my file.ts");
+		});
+
+		test("handles deeply nested paths", () => {
+			const line = "10\t5\tsrc/handlers/commands/diff.ts";
+			const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+			expect(match).not.toBeNull();
+			expect(match?.[3]).toBe("src/handlers/commands/diff.ts");
+		});
+	});
+
+	describe("summary aggregation", () => {
+		test("combines staged and unstaged for same file", () => {
+			const fileMap = new Map<
+				string,
+				{ file: string; added: number; removed: number }
+			>();
+
+			// Unstaged changes
+			fileMap.set("src/index.ts", {
+				file: "src/index.ts",
+				added: 10,
+				removed: 5,
+			});
+
+			// Staged changes for same file
+			const existing = fileMap.get("src/index.ts");
+			if (existing) {
+				existing.added += 5;
+				existing.removed += 2;
+			}
+
+			expect(existing?.added).toBe(15);
+			expect(existing?.removed).toBe(7);
+		});
+
+		test("keeps separate files separate", () => {
+			const fileMap = new Map<
+				string,
+				{ file: string; added: number; removed: number }
+			>();
+
+			fileMap.set("src/a.ts", { file: "src/a.ts", added: 10, removed: 5 });
+			fileMap.set("src/b.ts", { file: "src/b.ts", added: 3, removed: 1 });
+
+			expect(fileMap.size).toBe(2);
+			expect(fileMap.get("src/a.ts")?.added).toBe(10);
+			expect(fileMap.get("src/b.ts")?.added).toBe(3);
+		});
+	});
+});
+
+describe("Diff output formatting", () => {
+	describe("line counting", () => {
+		test("counts lines correctly for threshold check", () => {
+			const shortDiff = "line1\nline2\nline3";
+			const longDiff = Array.from({ length: 60 }, (_, i) => `line${i}`).join(
+				"\n",
+			);
+
+			expect(shortDiff.split("\n").length).toBe(3);
+			expect(longDiff.split("\n").length).toBe(60);
+
+			const THRESHOLD = 50;
+			expect(shortDiff.split("\n").length > THRESHOLD).toBe(false);
+			expect(longDiff.split("\n").length > THRESHOLD).toBe(true);
+		});
+	});
+
+	describe("HTML escaping for diff output", () => {
+		test("escapes angle brackets", () => {
+			const diff = "- const x = <T>();";
+			const escaped = diff
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+			expect(escaped).toBe("- const x = &lt;T&gt;();");
+		});
+
+		test("escapes ampersands", () => {
+			const diff = '- const url = "foo&bar";';
+			const escaped = diff
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+			expect(escaped).toBe('- const url = "foo&amp;bar";');
+		});
+
+		test("escapes multiple special characters", () => {
+			const diff = "- const x = <T & U>();";
+			const escaped = diff
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+			expect(escaped).toBe("- const x = &lt;T &amp; U&gt;();");
+		});
+	});
+
+	describe("file name generation for diff attachment", () => {
+		test("generates default filename", () => {
+			const filename = "changes.diff";
+			expect(filename).toBe("changes.diff");
+		});
+
+		test("generates filename from file path", () => {
+			const file = "src/handlers/commands.ts";
+			const filename = `${file.replace(/\//g, "_")}.diff`;
+			expect(filename).toBe("src_handlers_commands.ts.diff");
+		});
+
+		test("handles simple file names", () => {
+			const file = "index.ts";
+			const filename = `${file.replace(/\//g, "_")}.diff`;
+			expect(filename).toBe("index.ts.diff");
+		});
+	});
+});

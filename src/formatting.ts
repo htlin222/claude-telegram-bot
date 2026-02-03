@@ -53,8 +53,12 @@ export function convertMarkdownToHtml(text: string): string {
 	// Double underscore: __text__ -> <b>text</b>
 	text = text.replace(/__([^_]+)__/g, "<b>$1</b>");
 
-	// Italic: _text_ -> <i>text</i> (but not __text__)
-	text = text.replace(/(?<!_)_([^_]+)_(?!_)/g, "<i>$1</i>");
+	// Italic: _text_ -> <i>text</i> (but not __text__ or word_with_underscores)
+	// Require proper word boundaries: space/punctuation before opening _, and after closing _
+	text = text.replace(
+		/(?<=^|[\s(])_([^_\n]+?)_(?=$|[\s.,;:!?)\]])/gm,
+		"<i>$1</i>",
+	);
 
 	// Blockquotes: &gt; text -> <blockquote>text</blockquote>
 	text = convertBlockquotes(text);

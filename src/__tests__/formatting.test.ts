@@ -115,4 +115,34 @@ describe("convertMarkdownToHtml", () => {
 	test("handles plain text without markdown", () => {
 		expect(convertMarkdownToHtml("Hello World")).toBe("Hello World");
 	});
+
+	test("does not convert underscores in identifiers to italic", () => {
+		// snake_case identifiers should NOT become italics
+		expect(convertMarkdownToHtml("lab_values")).toBe("lab_values");
+		expect(convertMarkdownToHtml("snake_case_name")).toBe("snake_case_name");
+		expect(convertMarkdownToHtml("my_function_name")).toBe("my_function_name");
+	});
+
+	test("does not convert underscores in table cells to italic", () => {
+		// Table with snake_case column names should not break HTML
+		const input = "| lab_values | lab_reports |";
+		const result = convertMarkdownToHtml(input);
+		expect(result).not.toContain("<i>");
+		expect(result).not.toContain("</i>");
+		expect(result).toContain("lab_values");
+		expect(result).toContain("lab_reports");
+	});
+
+	test("still converts proper italic markers with word boundaries", () => {
+		// Proper italic usage with spaces
+		expect(convertMarkdownToHtml("This is _italic_ text")).toBe(
+			"This is <i>italic</i> text",
+		);
+		expect(convertMarkdownToHtml("_italic_ at start")).toBe(
+			"<i>italic</i> at start",
+		);
+		expect(convertMarkdownToHtml("at end _italic_")).toBe(
+			"at end <i>italic</i>",
+		);
+	});
 });
