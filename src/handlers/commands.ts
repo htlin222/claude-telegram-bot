@@ -317,20 +317,12 @@ export async function handleResume(ctx: Context): Promise<void> {
 }
 
 /**
- * /restart - Restart the bot process.
+ * Execute the restart process.
  */
-export async function handleRestart(ctx: Context): Promise<void> {
-	const userId = ctx.from?.id;
-	const chatId = ctx.chat?.id;
-
-	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized.");
-		return;
-	}
-
-	// Detect if running in terminal mode
-	const isTTY = process.stdout.isTTY;
-
+export async function executeRestart(
+	ctx: Context,
+	chatId: number | undefined,
+): Promise<void> {
 	// Determine restart command based on how bot was started
 	const botScript = process.argv[1] || "";
 	const isCliMode =
@@ -352,26 +344,6 @@ export async function handleRestart(ctx: Context): Promise<void> {
 		// Development mode (bun run src/index.ts or src/bot.ts)
 		restartCommand = `bun run "${botScript}"`;
 		logFile = "/tmp/claude-telegram-bot.log";
-	}
-
-	// Warn if running in terminal
-	if (isTTY) {
-		await ctx.reply(
-			"⚠️ <b>Terminal Mode Detected</b>\n\n" +
-				"You started the bot from a terminal. Restarting will:\n" +
-				"• Detach from your current terminal session\n" +
-				"• Run in background\n" +
-				`• Log to: <code>${logFile}</code>\n\n` +
-				"View logs after restart:\n" +
-				`<code>tail -f ${logFile}</code>\n\n` +
-				"Or stop and restart manually:\n" +
-				"• Press Ctrl+C\n" +
-				`• Run <code>${restartCommand}</code>`,
-			{ parse_mode: "HTML" },
-		);
-
-		// Give user a chance to cancel
-		await Bun.sleep(3000);
 	}
 
 	const msg = await ctx.reply("🔄 Restarting bot...");
@@ -411,6 +383,72 @@ export async function handleRestart(ctx: Context): Promise<void> {
 
 	// Exit current process
 	process.exit(0);
+}
+
+/**
+ * /restart - Restart the bot process.
+ */
+export async function handleRestart(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	// Detect if running in terminal mode
+	const isTTY = process.stdout.isTTY;
+
+	// Determine restart command based on how bot was started
+	const botScript = process.argv[1] || "";
+	const isCliMode =
+		botScript.includes("cli.ts") || botScript.includes("cli.js");
+	const isBinary = !botScript.endsWith(".ts") && !botScript.endsWith(".js");
+
+	let restartCommand: string;
+	let logFile: string;
+
+	if (isBinary) {
+		// Standalone binary mode
+		restartCommand = process.argv[0] || "";
+		logFile = "/tmp/claude-telegram-bot.log";
+	} else if (isCliMode) {
+		// CLI mode (ctb)
+		restartCommand = `bun "${botScript}"`;
+		logFile = "/tmp/claude-telegram-bot.log";
+	} else {
+		// Development mode (bun run src/index.ts or src/bot.ts)
+		restartCommand = `bun run "${botScript}"`;
+		logFile = "/tmp/claude-telegram-bot.log";
+	}
+
+	// Warn if running in terminal
+	if (isTTY) {
+		const keyboard = new InlineKeyboard()
+			.text("✅ 確定重啟", "restart:confirm")
+			.text("❌ 取消", "restart:cancel");
+
+		await ctx.reply(
+			"⚠️ <b>Terminal Mode Detected</b>\n\n" +
+				"You started the bot from a terminal. Restarting will:\n" +
+				"• Detach from your current terminal session\n" +
+				"• Run in background\n" +
+				`• Log to: <code>${logFile}</code>\n\n` +
+				"View logs after restart:\n" +
+				`<code>tail -f ${logFile}</code>\n\n` +
+				"Or stop and restart manually:\n" +
+				"• Press Ctrl+C\n" +
+				`• Run <code>${restartCommand}</code>`,
+			{ parse_mode: "HTML", reply_markup: keyboard },
+		);
+
+		// Don't proceed - wait for user to click button
+		return;
+	}
+
+	// Not in TTY mode, proceed with restart directly
+	await executeRestart(ctx, chatId);
 }
 
 /**

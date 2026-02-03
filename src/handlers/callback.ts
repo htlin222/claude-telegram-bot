@@ -122,6 +122,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 2k. Handle restart callbacks
+	if (callbackData.startsWith("restart:")) {
+		await handleRestartCallback(ctx, callbackData);
+		return;
+	}
+
 	// 3. Parse callback data: askuser:{request_id}:{option_index}
 	if (!callbackData.startsWith("askuser:")) {
 		await ctx.answerCallbackQuery();
@@ -1251,6 +1257,45 @@ async function handleVoiceCallback(
 		} finally {
 			typing.stop();
 		}
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
+}
+
+/**
+ * Handle restart confirmation callbacks.
+ * Format: restart:confirm or restart:cancel
+ */
+async function handleRestartCallback(
+	ctx: Context,
+	callbackData: string,
+): Promise<void> {
+	const action = callbackData.split(":")[1];
+
+	if (action === "cancel") {
+		await ctx.answerCallbackQuery({ text: "已取消" });
+		try {
+			await ctx.editMessageText("❌ 重啟已取消");
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	if (action === "confirm") {
+		await ctx.answerCallbackQuery({ text: "正在重啟..." });
+
+		// Delete the confirmation message
+		try {
+			await ctx.deleteMessage();
+		} catch {
+			// Message may have been deleted
+		}
+
+		// Execute restart
+		const { executeRestart } = await import("./commands");
+		await executeRestart(ctx, ctx.chat?.id);
 		return;
 	}
 
