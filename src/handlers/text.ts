@@ -5,7 +5,7 @@
 import { spawn } from "node:child_process";
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { ALLOWED_USERS } from "../config";
+import { ALLOWED_USERS, MESSAGE_EFFECTS } from "../config";
 import { formatUserError } from "../errors";
 import { queryQueue } from "../query-queue";
 import {
@@ -17,7 +17,7 @@ import {
 import { session } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { createOrReuseWorktree } from "../worktree";
-import { StreamingState, createStatusCallback } from "./streaming";
+import { createStatusCallback, StreamingState } from "./streaming";
 
 /**
  * Execute a shell command and return output.
@@ -76,7 +76,18 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 1a. Pending worktree request
+	// 1a. Pending voice edit - user is adding supplemental text to voice transcript
+	const pendingVoice = session.consumePendingVoiceEdit(userId);
+	if (pendingVoice) {
+		// Combine original transcript with user's supplemental text
+		message = `${pendingVoice} ${message}`;
+		await ctx.reply(
+			`✅ 已合併語音與補充文字：\n"${message.length > 200 ? `${message.slice(0, 200)}...` : message}"`,
+		);
+		// Continue to normal message processing below
+	}
+
+	// 1b. Pending worktree request
 	const pendingWorktree = session.peekWorktreeRequest(userId, chatId);
 	if (pendingWorktree) {
 		const trimmed = message.trim();
@@ -106,7 +117,10 @@ export async function handleText(ctx: Context): Promise<void> {
 			session.clearWorktreeRequest(userId, chatId);
 			await ctx.reply(
 				`❌ Worktree path is not in allowed directories:\n<code>${result.path}</code>\n\nUpdate ALLOWED_PATHS and try again.`,
-				{ parse_mode: "HTML" },
+				{
+					parse_mode: "HTML",
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				},
 			);
 			return;
 		}
@@ -148,7 +162,9 @@ export async function handleText(ctx: Context): Promise<void> {
 			// Safety check - same as Claude's Bash tool
 			const [isSafe, reason] = checkCommandSafety(shellCmd);
 			if (!isSafe) {
-				await ctx.reply(`🚫 Command blocked: ${reason}`);
+				await ctx.reply(`🚫 Command blocked: ${reason}`, {
+					message_effect_id: MESSAGE_EFFECTS.POOP,
+				});
 				await auditLog(userId, username, "SHELL_BLOCKED", shellCmd, reason);
 				return;
 			}
@@ -265,9 +281,14 @@ export async function handleText(ctx: Context): Promise<void> {
 				await session.kill(); // Clear possibly corrupted session
 				await ctx.reply(
 					"⚠️ Claude Code crashed and the session was reset. Please try again.",
+					{
+						message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+					},
 				);
 			} else {
-				await ctx.reply(`❌ ${formatUserError(error as Error)}`);
+				await ctx.reply(`❌ ${formatUserError(error as Error)}`, {
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				});
 			}
 			break; // Exit loop after handling error
 		}

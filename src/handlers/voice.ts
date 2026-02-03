@@ -4,17 +4,21 @@
 
 import { unlinkSync } from "node:fs";
 import type { Context } from "grammy";
-import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
-import { queryQueue } from "../query-queue";
+import { InlineKeyboard } from "grammy";
+import {
+	ALLOWED_USERS,
+	MESSAGE_EFFECTS,
+	TEMP_DIR,
+	TRANSCRIPTION_AVAILABLE,
+} from "../config";
+import { formatUserError } from "../errors";
 import { isAuthorized, rateLimiter } from "../security";
 import { session } from "../session";
 import {
-	auditLog,
 	auditLogRateLimit,
 	startTypingIndicator,
 	transcribeVoice,
 } from "../utils";
-import { createStatusCallback, StreamingState } from "./streaming";
 
 /**
  * Handle incoming voice messages.
@@ -79,38 +83,33 @@ export async function handleVoice(ctx: Context): Promise<void> {
 
 		const transcript = await transcribeVoice(voicePath);
 		if (!transcript) {
-			await ctx.api.editMessageText(
-				chatId,
-				statusMsg.message_id,
-				"❌ Transcription failed.",
-			);
+			await ctx.api.deleteMessage(chatId, statusMsg.message_id);
+			await ctx.reply("❌ Transcription failed.", {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 			stopProcessing();
 			return;
 		}
 
-		// 8. Show transcript
-		await ctx.api.editMessageText(
-			chatId,
-			statusMsg.message_id,
-			`🎤 "${transcript}"`,
-		);
+		// 8. Store transcript for later use and show with confirmation buttons
+		const transcriptData = Buffer.from(
+			JSON.stringify({ transcript, userId, chatId }),
+		).toString("base64");
 
-		// 9. Create streaming state and callback
-		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state);
+		const keyboard = new InlineKeyboard()
+			.text("✅ 確定", `voice:confirm:${transcriptData}`)
+			.text("❌ 取消", "voice:cancel")
+			.row()
+			.text("✏️ 編輯補充", `voice:edit:${transcriptData}`);
 
-		// 10. Send to Claude
-		const claudeResponse = await queryQueue.sendMessage(
-			transcript,
-			username,
-			userId,
-			statusCallback,
-			chatId,
-			ctx,
-		);
+		await ctx.api.deleteMessage(chatId, statusMsg.message_id);
+		await ctx.reply(`🎤 語音轉錄完成：\n\n"${transcript}"\n\n請選擇操作：`, {
+			reply_markup: keyboard,
+			message_effect_id: MESSAGE_EFFECTS.FIRE,
+		});
 
-		// 11. Audit log
-		await auditLog(userId, username, "VOICE", transcript, claudeResponse);
+		// Processing will be handled by callback handler
+		stopProcessing();
 	} catch (error) {
 		console.error("Error processing voice:", error);
 
@@ -129,9 +128,17 @@ export async function handleVoice(ctx: Context): Promise<void> {
 			await session.kill(); // Clear possibly corrupted session
 			await ctx.reply(
 				"⚠️ Claude Code crashed and the session was reset. Please try again.",
+				{
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				},
 			);
 		} else {
-			await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
+			const userMessage = formatUserError(
+				error instanceof Error ? error : new Error(errorStr),
+			);
+			await ctx.reply(`❌ ${userMessage}`, {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 		}
 	} finally {
 		stopProcessing();

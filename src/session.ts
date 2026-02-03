@@ -7,11 +7,12 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Context } from "grammy";
+import { resolvePath } from "./bookmarks";
 import {
 	AGENT_PROVIDER,
 	AGENT_PROVIDERS,
-	ALLOWED_PATHS,
 	type AgentProviderId,
+	ALLOWED_PATHS,
 	MAX_CONCURRENT_QUERIES,
 	MCP_SERVERS,
 	QUERY_TIMEOUT_MS,
@@ -27,7 +28,6 @@ import {
 import { botEvents } from "./events";
 import { formatToolStatus } from "./formatting";
 import { checkPendingAskUserRequests } from "./handlers/streaming";
-import { resolvePath } from "./bookmarks";
 import {
 	ClaudeProvider,
 	type ClaudeOptions as Options,
@@ -175,6 +175,9 @@ class ClaudeSession {
 		}
 	>();
 
+	// Pending voice edit (stores transcript waiting for user to add supplemental text)
+	private _pendingVoiceEdit: Map<number, string> = new Map();
+
 	private provider: AgentProvider<SDKMessage, Options, Query>;
 	private providerId: AgentProviderId;
 
@@ -246,6 +249,25 @@ class ClaudeSession {
 	 */
 	get pendingCount(): number {
 		return this._pendingMessages.length;
+	}
+
+	/**
+	 * Store a transcript that's waiting for user to add supplemental text.
+	 */
+	setPendingVoiceEdit(userId: number, transcript: string): void {
+		this._pendingVoiceEdit.set(userId, transcript);
+	}
+
+	/**
+	 * Get and remove pending voice edit for a user.
+	 */
+	consumePendingVoiceEdit(userId: number): string | null {
+		const transcript = this._pendingVoiceEdit.get(userId);
+		if (transcript) {
+			this._pendingVoiceEdit.delete(userId);
+			return transcript;
+		}
+		return null;
 	}
 
 	constructor(provider?: AgentProvider<SDKMessage, Options, Query>) {

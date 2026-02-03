@@ -1,0 +1,71 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Check package.json version change
+        id: version_check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pkg_name=$(node -p "require('./package.json').name")
+          local_version=$(node -p "require('./package.json').version")
+
+          before_sha='${{ github.event.before }}'
+          version_changed=true
+          previous_version=none
+
+          if [ -n "$before_sha" ] && [ "$before_sha" != "0000000000000000000000000000000000000000" ]; then
+            if git cat-file -e "$before_sha":package.json 2>/dev/null; then
+              previous_version=$(git show "$before_sha":package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+              if [ "$previous_version" = "$local_version" ]; then
+                version_changed=false
+              fi
+            fi
+          fi
+
+          published_version=$(npm view "$pkg_name" version 2>/dev/null || echo none)
+          already_published=false
+          if [ "$published_version" = "$local_version" ]; then
+            already_published=true
+          fi
+
+          should_publish=false
+          if [ "$version_changed" = true ] && [ "$already_published" = false ]; then
+            should_publish=true
+          fi
+
+          echo "pkg_name=$pkg_name" >> "$GITHUB_OUTPUT"
+          echo "local_version=$local_version" >> "$GITHUB_OUTPUT"
+          echo "previous_version=$previous_version" >> "$GITHUB_OUTPUT"
+          echo "published_version=$published_version" >> "$GITHUB_OUTPUT"
+          echo "version_changed=$version_changed" >> "$GITHUB_OUTPUT"
+          echo "already_published=$already_published" >> "$GITHUB_OUTPUT"
+          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        if: steps.version_check.outputs.should_publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish

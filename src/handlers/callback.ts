@@ -9,10 +9,11 @@ import { type Context, InlineKeyboard } from "grammy";
 import { addBookmark, removeBookmark, resolvePath } from "../bookmarks";
 import {
 	AGENT_PROVIDERS,
-	ALLOWED_USERS,
 	type AgentProviderId,
+	ALLOWED_USERS,
 	MESSAGE_EFFECTS,
 } from "../config";
+import { formatUserError } from "../errors";
 import { escapeHtml } from "../formatting";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, isPathAllowed } from "../security";
@@ -26,7 +27,7 @@ import {
 	getMergeInfo,
 	revertAllChanges,
 } from "../worktree";
-import { StreamingState, createStatusCallback } from "./streaming";
+import { createStatusCallback, StreamingState } from "./streaming";
 import { execShellCommand } from "./text";
 
 /**
@@ -49,7 +50,13 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2. Handle shell command confirmation
+	// 2. Handle voice confirmation callbacks
+	if (callbackData.startsWith("voice:")) {
+		await handleVoiceCallback(ctx, userId, username, chatId, callbackData);
+		return;
+	}
+
+	// 3. Handle shell command confirmation
 	if (callbackData.startsWith("shell:")) {
 		await handleShellCallback(ctx, userId, username, callbackData);
 		return;
@@ -237,7 +244,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 				"⚠️ Claude Code crashed and the session was reset. Please try again.",
 			);
 		} else {
-			await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
+			const userMessage = formatUserError(
+				error instanceof Error ? error : new Error(errorStr),
+			);
+			await ctx.reply(`❌ ${userMessage}`, {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 		}
 	} finally {
 		typing.stop();
@@ -385,7 +397,12 @@ async function handlePendingCallback(
 			await auditLog(userId, username, "PENDING_EXEC", message, response);
 		} catch (error) {
 			console.error("Error executing pending message:", error);
-			await ctx.reply(`❌ Error: ${String(error).slice(0, 200)}`);
+			const userMessage = formatUserError(
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			await ctx.reply(`❌ ${userMessage}`, {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 		} finally {
 			typing.stop();
 		}
@@ -447,7 +464,12 @@ async function handleActionCallback(
 		await auditLog(userId, username, "ACTION", command, response);
 	} catch (error) {
 		console.error("Error executing action:", error);
-		await ctx.reply(`❌ 執行失敗: ${String(error).slice(0, 200)}`);
+		const userMessage = formatUserError(
+			error instanceof Error ? error : new Error(String(error)),
+		);
+		await ctx.reply(`❌ 執行失敗: ${userMessage}`, {
+			message_effect_id: MESSAGE_EFFECTS.POOP,
+		});
 	} finally {
 		typing.stop();
 	}
@@ -792,7 +814,9 @@ async function handleSendFileCallback(
 		await ctx.replyWithDocument(new InputFile(resolvedPath, fileName));
 	} catch (error) {
 		console.error("Failed to send file:", error);
-		await ctx.reply(`❌ Failed to send file: ${String(error).slice(0, 100)}`);
+		await ctx.reply(`❌ Failed to send file: ${String(error).slice(0, 100)}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 	}
 }
 
@@ -903,7 +927,9 @@ If the merge is clean, just complete it. If there are conflicts, explain what yo
 		await auditLog(userId, username, "MERGE", branchToMerge, response);
 	} catch (error) {
 		console.error("Merge error:", error);
-		await ctx.reply(`❌ Merge failed: ${String(error).slice(0, 200)}`);
+		await ctx.reply(`❌ Merge failed: ${String(error).slice(0, 200)}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 	} finally {
 		typing.stop();
 	}
@@ -965,7 +991,9 @@ async function handleDiffCallback(
 			const MAX_DIFF_SIZE = 50 * 1024 * 1024;
 			if (diffBuffer.length > MAX_DIFF_SIZE) {
 				await ctx.answerCallbackQuery({ text: "Diff file too large" });
-				await ctx.reply("❌ Diff is too large to send as a file.");
+				await ctx.reply("❌ Diff is too large to send as a file.", {
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				});
 				return;
 			}
 			const filename = file
@@ -1029,7 +1057,9 @@ async function handleDiffCallback(
 			await auditLog(userId, username, "DIFF_COMMIT", "/commit", response);
 		} catch (error) {
 			console.error("Commit error:", error);
-			await ctx.reply(`❌ Commit failed: ${String(error).slice(0, 200)}`);
+			await ctx.reply(`❌ Commit failed: ${String(error).slice(0, 200)}`, {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 		} finally {
 			typing.stop();
 		}
@@ -1092,6 +1122,134 @@ async function handleDiffCallback(
 				"⚠️ <b>Confirm Revert</b>\n\nThis will discard ALL uncommitted changes.\n\n<b>This action cannot be undone!</b>",
 				{ parse_mode: "HTML", reply_markup: keyboard },
 			);
+		}
+		return;
+	}
+
+	await ctx.answerCallbackQuery({ text: "Unknown action" });
+}
+
+/**
+ * Handle voice confirmation callbacks.
+ * Format: voice:confirm:{data}, voice:cancel, voice:edit:{data}
+ */
+async function handleVoiceCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	chatId: number,
+	callbackData: string,
+): Promise<void> {
+	const parts = callbackData.split(":");
+	const action = parts[1];
+
+	if (action === "cancel") {
+		await ctx.answerCallbackQuery({ text: "已取消" });
+		try {
+			await ctx.editMessageText("❌ 語音訊息已取消");
+		} catch {
+			// Message may have been deleted
+		}
+		return;
+	}
+
+	if (action === "confirm" || action === "edit") {
+		const encodedData = parts.slice(2).join(":");
+		let transcript = "";
+
+		try {
+			const data = JSON.parse(Buffer.from(encodedData, "base64").toString());
+			transcript = data.transcript || "";
+		} catch {
+			await ctx.answerCallbackQuery({ text: "無效的資料" });
+			return;
+		}
+
+		if (!transcript) {
+			await ctx.answerCallbackQuery({ text: "找不到轉錄文字" });
+			return;
+		}
+
+		if (action === "edit") {
+			// Request user to send additional text
+			await ctx.answerCallbackQuery({ text: "請輸入補充文字" });
+			try {
+				await ctx.editMessageText(
+					`✏️ 原始轉錄：\n"${transcript}"\n\n請輸入您要補充的文字，將會附加在原文後面：`,
+				);
+			} catch {
+				await ctx.reply(
+					`✏️ 原始轉錄：\n"${transcript}"\n\n請輸入您要補充的文字：`,
+				);
+			}
+
+			// Store transcript for the next message
+			session.setPendingVoiceEdit(userId, transcript);
+			return;
+		}
+
+		// action === "confirm"
+		await ctx.answerCallbackQuery({ text: "正在處理..." });
+
+		// Update message to show confirmation
+		try {
+			await ctx.editMessageText(`✅ 已確認：\n"${transcript}"`);
+		} catch {
+			// Message may have been deleted
+		}
+
+		// Send to Claude
+		const typing = startTypingIndicator(ctx);
+		const state = new StreamingState();
+		const statusCallback = createStatusCallback(ctx, state);
+
+		try {
+			const response = await queryQueue.sendMessage(
+				transcript,
+				username,
+				userId,
+				statusCallback,
+				chatId,
+				ctx,
+			);
+
+			await auditLog(userId, username, "VOICE_CONFIRM", transcript, response);
+		} catch (error) {
+			console.error("Error processing voice confirmation:", error);
+
+			for (const toolMsg of state.toolMessages) {
+				try {
+					await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
+				} catch (error) {
+					console.debug("Failed to delete tool message:", error);
+				}
+			}
+
+			const errorStr = String(error);
+			const isClaudeCodeCrash = errorStr
+				.toLowerCase()
+				.includes("process exited with code");
+
+			if (errorStr.includes("abort") || errorStr.includes("cancel")) {
+				const wasInterrupt = session.consumeInterruptFlag();
+				if (!wasInterrupt) {
+					await ctx.reply("🛑 Query stopped.");
+				}
+			} else if (isClaudeCodeCrash) {
+				await session.kill();
+				await ctx.reply(
+					"⚠️ Claude Code crashed and the session was reset. Please try again.",
+				);
+			} else {
+				const userMessage = formatUserError(
+					error instanceof Error ? error : new Error(errorStr),
+				);
+				await ctx.reply(`❌ ${userMessage}`, {
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				});
+			}
+		} finally {
+			typing.stop();
 		}
 		return;
 	}

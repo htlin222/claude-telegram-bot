@@ -82,11 +82,11 @@ export async function checkPendingAskUserRequests(
 }
 
 // Spinner frames for tool animation
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_FRAMES = ["", ".", "..", "...", "....", "....."];
 const TOOL_SPINNER_INTERVAL_MS = Number.parseInt(
-	process.env.TOOL_SPINNER_INTERVAL_MS || "3000",
+	process.env.TOOL_SPINNER_INTERVAL_MS || "1500",
 	10,
-); // Update every 3 seconds
+); // Update every 1.5 seconds
 
 /**
  * Tracks state for streaming message updates.
@@ -97,6 +97,7 @@ export class StreamingState {
 	lastEditTimes = new Map<number, number>(); // segment_id -> last edit time
 	lastContent = new Map<number, string>(); // segment_id -> last sent content
 	toolStartTime: number | null = null; // timestamp when current tool started
+	hasToolExecution = false; // track if any tools were executed
 
 	// Tool spinner state
 	currentToolMsg: Message | null = null;
@@ -139,6 +140,7 @@ export function createStatusCallback(
 			} else if (statusType === "tool") {
 				// Stop previous tool spinner if any
 				state.stopToolSpinner();
+				state.hasToolExecution = true;
 
 				state.toolStartTime = Date.now();
 				state.currentToolContent = content;
@@ -299,16 +301,18 @@ export function createStatusCallback(
 					}
 				}
 
-				// Show action buttons after response completes with confetti effect
-				const actionKeyboard = new InlineKeyboard()
-					.text("Undo", "action:undo")
-					.text("Test", "action:test")
-					.text("Commit", "action:commit")
-					.text("Yes", "action:yes");
-				await ctx.reply("Done", {
-					reply_markup: actionKeyboard,
-					message_effect_id: MESSAGE_EFFECTS.CONFETTI,
-				});
+				if (state.hasToolExecution) {
+					// Show action buttons after response completes with confetti effect
+					const actionKeyboard = new InlineKeyboard()
+						.text("Undo", "action:undo")
+						.text("Test", "action:test")
+						.text("Commit", "action:commit")
+						.text("Yes", "action:yes");
+					await ctx.reply("Done", {
+						reply_markup: actionKeyboard,
+						message_effect_id: MESSAGE_EFFECTS.CONFETTI,
+					});
+				}
 			}
 		} catch (error) {
 			console.error("Status callback error:", error);

@@ -165,10 +165,18 @@ if (existsSync(RESTART_FILE)) {
 
 		// Only update if restart was recent (within 30 seconds)
 		if (age < 30000 && data.chat_id && data.message_id) {
+			const pid = process.pid;
+			const logFile = data.log_file || "/tmp/claude-telegram-bot.log";
+
 			await bot.api.editMessageText(
 				data.chat_id,
 				data.message_id,
-				"✅ Bot restarted",
+				`✅ <b>Bot Restarted</b>\n\n` +
+					`PID: <code>${pid}</code>\n` +
+					`Log: <code>${logFile}</code>\n\n` +
+					`View logs:\n<code>tail -f ${logFile}</code>\n\n` +
+					`Stop bot:\n<code>kill ${pid}</code>`,
+				{ parse_mode: "HTML" },
 			);
 		}
 		safeUnlink(RESTART_FILE);

@@ -5,14 +5,14 @@
  */
 
 import type { Context } from "grammy";
-import { ALLOWED_USERS, TEMP_DIR } from "../config";
+import { ALLOWED_USERS, MESSAGE_EFFECTS, TEMP_DIR } from "../config";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, rateLimiter } from "../security";
 import { session } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { cleanupTempFiles } from "../utils/temp-cleanup";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
-import { StreamingState, createStatusCallback } from "./streaming";
+import { createStatusCallback, StreamingState } from "./streaming";
 
 // Create photo-specific media group buffer
 const photoBuffer = createMediaGroupBuffer({
@@ -154,7 +154,9 @@ export async function handlePhoto(ctx: Context): Promise<void> {
 				);
 			} catch (editError) {
 				console.debug("Failed to edit status message:", editError);
-				await ctx.reply("❌ Failed to download photo.");
+				await ctx.reply("❌ Failed to download photo.", {
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				});
 			}
 		} else {
 			await ctx.reply("❌ Failed to download photo.");

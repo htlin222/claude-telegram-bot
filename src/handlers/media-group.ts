@@ -7,7 +7,8 @@
 
 import type { Context } from "grammy";
 import type { Message } from "grammy/types";
-import { MEDIA_GROUP_TIMEOUT } from "../config";
+import { MEDIA_GROUP_TIMEOUT, MESSAGE_EFFECTS } from "../config";
+import { formatUserError } from "../errors";
 import { rateLimiter } from "../security";
 import { session } from "../session";
 import type { PendingMediaGroup } from "../types";
@@ -124,6 +125,9 @@ export function createMediaGroupBuffer(config: MediaGroupConfig) {
 			try {
 				await group.ctx.reply(
 					`❌ Failed to process ${config.itemLabelPlural}: ${errorStr}`,
+					{
+						message_effect_id: MESSAGE_EFFECTS.POOP,
+					},
 				);
 			} catch (replyError) {
 				console.error("Failed to send error notification:", replyError);
@@ -239,8 +243,16 @@ export async function handleProcessingError(
 		await session.kill(); // Clear possibly corrupted session
 		await ctx.reply(
 			"⚠️ Claude Code crashed and the session was reset. Please try again.",
+			{
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			},
 		);
 	} else {
-		await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
+		const userMessage = formatUserError(
+			error instanceof Error ? error : new Error(errorStr),
+		);
+		await ctx.reply(`❌ ${userMessage}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 	}
 }

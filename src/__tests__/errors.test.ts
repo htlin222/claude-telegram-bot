@@ -17,6 +17,15 @@ describe("formatUserError", () => {
 		expect(msg).toContain("busy");
 	});
 
+	test("formats API 500 error", () => {
+		const msg = formatUserError(
+			new Error(
+				'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"},"request_id":"req_011CXmZh6HsBtB7WE8bYrakG"}',
+			),
+		);
+		expect(msg).toContain("temporarily unavailable");
+	});
+
 	test("formats network error", () => {
 		const msg = formatUserError(new Error("ETIMEDOUT"));
 		expect(msg.toLowerCase()).toContain("connection");

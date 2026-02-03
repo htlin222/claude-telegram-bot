@@ -18,6 +18,10 @@ const ERROR_PATTERNS: ErrorPattern[] = [
 		message: "Claude is busy right now. Please wait a moment and try again.",
 	},
 	{
+		pattern: /api_error|internal server error|request_id|status code 5\d\d|http 5\d\d|500|502|503|504/i,
+		message: "Service is temporarily unavailable. Please try again in a moment.",
+	},
+	{
 		pattern: /etimedout|econnreset|enotfound/i,
 		message: "Connection issue. Please check your network and try again.",
 	},

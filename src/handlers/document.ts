@@ -6,14 +6,14 @@
  */
 
 import type { Context } from "grammy";
-import { ALLOWED_USERS, TEMP_DIR } from "../config";
+import { ALLOWED_USERS, MESSAGE_EFFECTS, TEMP_DIR } from "../config";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, rateLimiter } from "../security";
 import { session } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { cleanupTempFile, cleanupTempFiles } from "../utils/temp-cleanup";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
-import { StreamingState, createStatusCallback } from "./streaming";
+import { createStatusCallback, StreamingState } from "./streaming";
 
 // Supported text file extensions
 const TEXT_EXTENSIONS = [
@@ -437,7 +437,9 @@ async function processDocumentPaths(
 	}
 
 	if (documents.length === 0) {
-		await ctx.reply("❌ Failed to extract any documents.");
+		await ctx.reply("❌ Failed to extract any documents.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -466,7 +468,9 @@ export async function handleDocument(ctx: Context): Promise<void> {
 
 	// 2. Check file size
 	if (doc.file_size && doc.file_size > MAX_FILE_SIZE) {
-		await ctx.reply("❌ File too large. Maximum size is 10MB.");
+		await ctx.reply("❌ File too large. Maximum size is 10MB.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -484,6 +488,9 @@ export async function handleDocument(ctx: Context): Promise<void> {
 				`Supported: PDF, archives (${ARCHIVE_EXTENSIONS.join(
 					", ",
 				)}), ${TEXT_EXTENSIONS.join(", ")}`,
+			{
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			},
 		);
 		return;
 	}
@@ -494,7 +501,9 @@ export async function handleDocument(ctx: Context): Promise<void> {
 		docPath = await downloadDocument(ctx);
 	} catch (error) {
 		console.error("Failed to download document:", error);
-		await ctx.reply("❌ Failed to download document.");
+		await ctx.reply("❌ Failed to download document.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 

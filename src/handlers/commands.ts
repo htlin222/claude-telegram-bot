@@ -11,8 +11,9 @@ import { InlineKeyboard, InputFile } from "grammy";
 import { isBookmarked, loadBookmarks, resolvePath } from "../bookmarks";
 import {
 	AGENT_PROVIDERS,
-	ALLOWED_USERS,
 	type AgentProviderId,
+	ALLOWED_USERS,
+	MESSAGE_EFFECTS,
 	RESTART_FILE,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../config";
@@ -120,16 +121,33 @@ export async function handleNew(ctx: Context): Promise<void> {
 	// Get context info
 	const username = process.env.USER || process.env.USERNAME || "unknown";
 	const workDir = session.workingDir;
-	const now = new Date().toLocaleString("en-US", {
-		weekday: "short",
-		month: "short",
-		day: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	});
+
+	// Format date as yyyy-mm-dd (Wed) HH:MM GMT+X
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, "0");
+	const day = String(now.getDate()).padStart(2, "0");
+	const weekday = now.toLocaleDateString("en-US", { weekday: "short" });
+	const hours = String(now.getHours()).padStart(2, "0");
+	const minutes = String(now.getMinutes()).padStart(2, "0");
+	const timezoneOffset = -now.getTimezoneOffset() / 60;
+	const timezone =
+		timezoneOffset >= 0 ? `GMT+${timezoneOffset}` : `GMT${timezoneOffset}`;
+	const dateStr = `${year}-${month}-${day} (${weekday}) ${hours}:${minutes} ${timezone}`;
+
+	// Get uname info (system name and hostname)
+	const { execSync } = await import("node:child_process");
+	let unameInfo = "";
+	try {
+		const system = execSync("uname -s", { encoding: "utf-8" }).trim();
+		const hostname = execSync("uname -n", { encoding: "utf-8" }).trim();
+		unameInfo = `${system} ${hostname}`;
+	} catch (_e) {
+		unameInfo = "N/A";
+	}
 
 	await ctx.reply(
-		`🆕 Session cleared. Next message starts fresh.\n\n👤 ${username}\n📁 <code>${workDir}</code>\n🕐 ${now}`,
+		`🆕 Session cleared. Next message starts fresh.\n\n👤 ${username}\n📁 <code>${workDir}</code>\n🕐 ${dateStr}\n💻 <code>${unameInfo}</code>`,
 		{ parse_mode: "HTML" },
 	);
 }
@@ -292,7 +310,9 @@ export async function handleResume(ctx: Context): Promise<void> {
 	if (success) {
 		await ctx.reply(`✅ ${message}`);
 	} else {
-		await ctx.reply(`❌ ${message}`);
+		await ctx.reply(`❌ ${message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 	}
 }
 
@@ -308,6 +328,52 @@ export async function handleRestart(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// Detect if running in terminal mode
+	const isTTY = process.stdout.isTTY;
+
+	// Determine restart command based on how bot was started
+	const botScript = process.argv[1] || "";
+	const isCliMode =
+		botScript.includes("cli.ts") || botScript.includes("cli.js");
+	const isBinary = !botScript.endsWith(".ts") && !botScript.endsWith(".js");
+
+	let restartCommand: string;
+	let logFile: string;
+
+	if (isBinary) {
+		// Standalone binary mode
+		restartCommand = process.argv[0] || "";
+		logFile = "/tmp/claude-telegram-bot.log";
+	} else if (isCliMode) {
+		// CLI mode (ctb)
+		restartCommand = `bun "${botScript}"`;
+		logFile = "/tmp/claude-telegram-bot.log";
+	} else {
+		// Development mode (bun run src/index.ts or src/bot.ts)
+		restartCommand = `bun run "${botScript}"`;
+		logFile = "/tmp/claude-telegram-bot.log";
+	}
+
+	// Warn if running in terminal
+	if (isTTY) {
+		await ctx.reply(
+			"⚠️ <b>Terminal Mode Detected</b>\n\n" +
+				"You started the bot from a terminal. Restarting will:\n" +
+				"• Detach from your current terminal session\n" +
+				"• Run in background\n" +
+				`• Log to: <code>${logFile}</code>\n\n` +
+				"View logs after restart:\n" +
+				`<code>tail -f ${logFile}</code>\n\n` +
+				"Or stop and restart manually:\n" +
+				"• Press Ctrl+C\n" +
+				`• Run <code>${restartCommand}</code>`,
+			{ parse_mode: "HTML" },
+		);
+
+		// Give user a chance to cancel
+		await Bun.sleep(3000);
+	}
+
 	const msg = await ctx.reply("🔄 Restarting bot...");
 
 	// Save message info so we can update it after restart
@@ -319,6 +385,7 @@ export async function handleRestart(ctx: Context): Promise<void> {
 					chat_id: chatId,
 					message_id: msg.message_id,
 					timestamp: Date.now(),
+					log_file: logFile,
 				}),
 			);
 		} catch (e) {
@@ -329,7 +396,20 @@ export async function handleRestart(ctx: Context): Promise<void> {
 	// Give time for the message to send
 	await Bun.sleep(500);
 
-	// Exit - launchd will restart us
+	// Spawn a new process to restart the bot
+	const { spawn } = await import("node:child_process");
+	const cwd = process.cwd();
+
+	// Build the restart command with log redirection
+	const fullCommand = `sleep 1 && cd "${cwd}" && ${restartCommand} >> ${logFile} 2>&1 & echo $!`;
+
+	// Spawn detached process that will restart after current process exits
+	spawn("sh", ["-c", fullCommand], {
+		detached: true,
+		stdio: "ignore",
+	}).unref();
+
+	// Exit current process
 	process.exit(0);
 }
 
@@ -346,7 +426,9 @@ export async function handleRetry(ctx: Context): Promise<void> {
 
 	// Check if there's a message to retry
 	if (!session.lastMessage) {
-		await ctx.reply("❌ No message to retry.");
+		await ctx.reply("❌ No message to retry.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -529,7 +611,9 @@ export async function handleWorktree(ctx: Context): Promise<void> {
 
 	const status = await getWorkingTreeStatus(session.workingDir);
 	if (!status.success) {
-		await ctx.reply(`❌ ${status.message}`);
+		await ctx.reply(`❌ ${status.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 	if (status.dirty) {
@@ -584,7 +668,9 @@ export async function handleBranch(ctx: Context): Promise<void> {
 
 	const status = await getWorkingTreeStatus(session.workingDir);
 	if (!status.success) {
-		await ctx.reply(`❌ ${status.message}`);
+		await ctx.reply(`❌ ${status.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 	if (status.dirty) {
@@ -596,7 +682,9 @@ export async function handleBranch(ctx: Context): Promise<void> {
 
 	const result = await listBranches(session.workingDir);
 	if (!result.success) {
-		await ctx.reply(`❌ ${result.message}`);
+		await ctx.reply(`❌ ${result.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -665,7 +753,9 @@ export async function handleMerge(ctx: Context): Promise<void> {
 
 	const status = await getWorkingTreeStatus(session.workingDir);
 	if (!status.success) {
-		await ctx.reply(`❌ ${status.message}`);
+		await ctx.reply(`❌ ${status.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 	if (status.dirty) {
@@ -677,7 +767,9 @@ export async function handleMerge(ctx: Context): Promise<void> {
 
 	const result = await getMergeInfo(session.workingDir);
 	if (!result.success) {
-		await ctx.reply(`❌ ${result.message}`);
+		await ctx.reply(`❌ ${result.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -792,7 +884,7 @@ export async function handlePlan(ctx: Context): Promise<void> {
 }
 
 /**
- * /compact - Request context compaction (sends a hint to Claude).
+ * /compact - Trigger SDK context compaction.
  */
 export async function handleCompact(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
@@ -803,11 +895,13 @@ export async function handleCompact(ctx: Context): Promise<void> {
 	}
 
 	if (!session.isActive) {
-		await ctx.reply("❌ No active session to compact.");
+		await ctx.reply("❌ No active session to compact.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
-	// Send a message that triggers Claude to compact
+	// Send "/compact" to Claude SDK to trigger manual compaction
 	const { handleText } = await import("./text");
 	const fakeCtx = {
 		...ctx,
@@ -878,7 +972,9 @@ export async function handleUndo(ctx: Context): Promise<void> {
 	}
 
 	if (!session.isActive) {
-		await ctx.reply("❌ No active session.");
+		await ctx.reply("❌ No active session.", {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
@@ -899,7 +995,9 @@ export async function handleUndo(ctx: Context): Promise<void> {
 
 		const chatId = ctx.chat?.id;
 		if (!chatId) {
-			await ctx.reply("❌ Unable to determine chat ID.");
+			await ctx.reply("❌ Unable to determine chat ID.", {
+				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+			});
 			return;
 		}
 
@@ -990,13 +1088,73 @@ export async function handleCd(ctx: Context): Promise<void> {
 	);
 }
 
+// Text/code file extensions that should be displayed inline
+const TEXT_EXTENSIONS = [
+	".txt",
+	".md",
+	".json",
+	".xml",
+	".yaml",
+	".yml",
+	".toml",
+	".ini",
+	".env",
+	".js",
+	".ts",
+	".jsx",
+	".tsx",
+	".py",
+	".rb",
+	".go",
+	".rs",
+	".java",
+	".c",
+	".cpp",
+	".h",
+	".hpp",
+	".cs",
+	".php",
+	".sh",
+	".bash",
+	".zsh",
+	".fish",
+	".sql",
+	".css",
+	".scss",
+	".sass",
+	".less",
+	".html",
+	".vue",
+	".svelte",
+	".dart",
+	".kt",
+	".swift",
+	".m",
+	".mm",
+	".r",
+	".lua",
+	".pl",
+	".ex",
+	".exs",
+	".clj",
+	".scala",
+	".gradle",
+	".cmake",
+	".make",
+	".dockerfile",
+];
+
 /**
  * Send a single file to the user. Returns error message or null on success.
+ * For small text/code files, displays content inline with syntax highlighting.
+ * For large or binary files, sends as document download.
  */
 async function sendFile(
 	ctx: Context,
 	filePath: string,
 ): Promise<string | null> {
+	const { readFileSync } = await import("node:fs");
+
 	// Resolve relative paths from current working directory
 	const resolvedPath = resolvePath(filePath, session.workingDir);
 
@@ -1015,6 +1173,40 @@ async function sendFile(
 		return `Access denied: ${resolvedPath}`;
 	}
 
+	const filename = resolvedPath.split("/").pop() || "file";
+	const ext = extname(filename).toLowerCase();
+	const isTextFile = TEXT_EXTENSIONS.includes(ext);
+
+	// For small text/code files, display inline with syntax highlighting
+	const INLINE_SIZE_LIMIT = 4096; // Telegram message limit
+	if (isTextFile && stats.size < INLINE_SIZE_LIMIT) {
+		try {
+			const content = readFileSync(resolvedPath, "utf-8");
+
+			// Escape HTML special chars
+			const escaped = content
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+
+			// Truncate if too long for Telegram message
+			const maxLen = 3800; // Leave room for header and formatting
+			const truncated =
+				escaped.length > maxLen
+					? `${escaped.slice(0, maxLen)}...\n\n(truncated, use /file to download full file)`
+					: escaped;
+
+			await ctx.reply(
+				`📄 <b>${escapeHtml(filename)}</b>\n\n<pre><code class="language-${ext.slice(1)}">${truncated}</code></pre>`,
+				{ parse_mode: "HTML" },
+			);
+			return null;
+		} catch (error) {
+			// If inline display fails, fall through to file download
+			console.debug("Failed to display inline, falling back to file:", error);
+		}
+	}
+
 	// Check file size (Telegram limit is 50MB for bots)
 	const MAX_FILE_SIZE = 50 * 1024 * 1024;
 	if (stats.size > MAX_FILE_SIZE) {
@@ -1022,9 +1214,8 @@ async function sendFile(
 		return `File too large: ${resolvedPath} (${sizeMB}MB, max 50MB)`;
 	}
 
-	// Send the file
+	// Send as file download
 	try {
-		const filename = resolvedPath.split("/").pop() || "file";
 		await ctx.replyWithDocument(new InputFile(resolvedPath, filename));
 		return null;
 	} catch (error) {
@@ -1119,7 +1310,10 @@ export async function handleFile(ctx: Context): Promise<void> {
 	const inputPath = (match[1] ?? "").trim();
 	const error = await sendFile(ctx, inputPath);
 	if (error) {
-		await ctx.reply(`❌ ${error}`, { parse_mode: "HTML" });
+		await ctx.reply(`❌ ${error}`, {
+			parse_mode: "HTML",
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 	}
 }
 
@@ -1343,7 +1537,9 @@ export async function handleDiff(ctx: Context): Promise<void> {
 			: await getCombinedDiff(session.workingDir);
 
 	if (!result.success) {
-		await ctx.reply(`❌ ${result.message}`);
+		await ctx.reply(`❌ ${result.message}`, {
+			message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+		});
 		return;
 	}
 
