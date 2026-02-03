@@ -16,6 +16,7 @@ import {
 import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
+import { logNonCriticalError } from "../utils/error-logging";
 import { createOrReuseWorktree, getMergeInfo } from "../worktree";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { execShellCommand } from "./text";
@@ -765,7 +766,9 @@ async function handleMergeCallback(
 		await ctx.answerCallbackQuery({ text: "Merge cancelled" });
 		try {
 			await ctx.editMessageText("❌ Merge cancelled.");
-		} catch {}
+		} catch (error) {
+			logNonCriticalError("merge cancel edit", error);
+		}
 		return;
 	}
 
@@ -811,7 +814,9 @@ async function handleMergeCallback(
 			`🔀 Switched to <code>${info.mainBranch}</code> worktree.\n\nMerging <code>${branchToMerge}</code>...`,
 			{ parse_mode: "HTML" },
 		);
-	} catch {}
+	} catch (error) {
+		logNonCriticalError("merge status edit", error);
+	}
 
 	await ctx.answerCallbackQuery({ text: `Merging ${branchToMerge}...` });
 

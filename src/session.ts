@@ -5,18 +5,13 @@
  * V1 supports full options (cwd, mcpServers, settingSources, etc.)
  */
 
-import { readFileSync } from "node:fs";
-import {
-	ClaudeProvider,
-	type ClaudeOptions as Options,
-	type ClaudeQuery as Query,
-	type ClaudeSDKMessage as SDKMessage,
-} from "./providers/claude";
-import { CodexProvider } from "./providers/codex";
-import type { AgentProvider } from "./providers/types";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { Context } from "grammy";
 import {
+	AGENT_PROVIDER,
+	AGENT_PROVIDERS,
 	ALLOWED_PATHS,
+	type AgentProviderId,
 	MAX_CONCURRENT_QUERIES,
 	MCP_SERVERS,
 	QUERY_TIMEOUT_MS,
@@ -28,13 +23,18 @@ import {
 	THINKING_KEYWORDS,
 	TIMEOUT_PROMPT_WAIT_MS,
 	WORKING_DIR,
-	AGENT_PROVIDER,
-	type AgentProviderId,
-	AGENT_PROVIDERS,
 } from "./config";
 import { botEvents } from "./events";
 import { formatToolStatus } from "./formatting";
 import { checkPendingAskUserRequests } from "./handlers/streaming";
+import {
+	ClaudeProvider,
+	type ClaudeOptions as Options,
+	type ClaudeQuery as Query,
+	type ClaudeSDKMessage as SDKMessage,
+} from "./providers/claude";
+import { CodexProvider } from "./providers/codex";
+import type { AgentProvider } from "./providers/types";
 import { checkCommandSafety, isPathAllowed } from "./security";
 import type { SessionData, StatusCallback, TokenUsage } from "./types";
 
@@ -289,9 +289,7 @@ class ClaudeSession {
 		return this.providerId;
 	}
 
-	async setProvider(
-		providerId: AgentProviderId,
-	): Promise<[boolean, string]> {
+	async setProvider(providerId: AgentProviderId): Promise<[boolean, string]> {
 		if (!AGENT_PROVIDERS.includes(providerId)) {
 			return [false, `Unknown provider: ${providerId}`];
 		}
@@ -953,7 +951,8 @@ class ClaudeSession {
 				saved_at: new Date().toISOString(),
 				working_dir: this._workingDir,
 			};
-			Bun.write(SESSION_FILE, JSON.stringify(data));
+			// Use mode 0o600 for owner read/write only (security)
+			writeFileSync(SESSION_FILE, JSON.stringify(data), { mode: 0o600 });
 			console.log(`Session saved to ${SESSION_FILE}`);
 		} catch (error) {
 			console.warn(`Failed to save session: ${error}`);

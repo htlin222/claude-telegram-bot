@@ -4,7 +4,7 @@
  * Control Claude Code from your phone via Telegram.
  */
 
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { run } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import {
@@ -44,6 +44,7 @@ import {
 	handleWorktree,
 } from "./handlers";
 import { session } from "./session";
+import { safeUnlink } from "./utils/temp-cleanup";
 
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
@@ -132,12 +133,10 @@ if (existsSync(RESTART_FILE)) {
 				"✅ Bot restarted",
 			);
 		}
-		unlinkSync(RESTART_FILE);
+		safeUnlink(RESTART_FILE);
 	} catch (e) {
 		console.warn("Failed to update restart message:", e);
-		try {
-			unlinkSync(RESTART_FILE);
-		} catch {}
+		safeUnlink(RESTART_FILE);
 	}
 }
 

@@ -4,34 +4,14 @@
  * Supports single photos and media groups (albums) with 1s buffering.
  */
 
-import { unlinkSync } from "node:fs";
 import type { Context } from "grammy";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import { session } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
+import { cleanupTempFiles } from "../utils/temp-cleanup";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
-import { createStatusCallback, StreamingState } from "./streaming";
-
-/**
- * Safely delete a temp file, ignoring errors.
- */
-function cleanupTempFile(filePath: string): void {
-	try {
-		unlinkSync(filePath);
-	} catch {
-		// Ignore cleanup errors
-	}
-}
-
-/**
- * Cleanup multiple temp files.
- */
-function cleanupTempFiles(filePaths: string[]): void {
-	for (const path of filePaths) {
-		cleanupTempFile(path);
-	}
-}
+import { StreamingState, createStatusCallback } from "./streaming";
 
 // Create photo-specific media group buffer
 const photoBuffer = createMediaGroupBuffer({
