@@ -80,24 +80,53 @@ export function createMediaGroupBuffer(config: MediaGroupConfig) {
 			}
 		}
 
-		await processCallback(
-			group.ctx,
-			group.items,
-			group.caption,
-			userId,
-			username,
-			chatId,
-		);
+		try {
+			await processCallback(
+				group.ctx,
+				group.items,
+				group.caption,
+				userId,
+				username,
+				chatId,
+			);
 
-		// Delete status message
-		if (group.statusMsg) {
+			// Delete status message on success
+			if (group.statusMsg) {
+				try {
+					await group.ctx.api.deleteMessage(
+						group.statusMsg.chat.id,
+						group.statusMsg.message_id,
+					);
+				} catch (error) {
+					console.debug("Failed to delete status message:", error);
+				}
+			}
+		} catch (error) {
+			console.error(
+				`Failed to process ${config.itemLabelPlural} album:`,
+				error,
+			);
+
+			// Delete status message on error
+			if (group.statusMsg) {
+				try {
+					await group.ctx.api.deleteMessage(
+						group.statusMsg.chat.id,
+						group.statusMsg.message_id,
+					);
+				} catch (deleteError) {
+					console.debug("Failed to delete status message:", deleteError);
+				}
+			}
+
+			// Notify user of failure
+			const errorStr = String(error).slice(0, 150);
 			try {
-				await group.ctx.api.deleteMessage(
-					group.statusMsg.chat.id,
-					group.statusMsg.message_id,
+				await group.ctx.reply(
+					`❌ Failed to process ${config.itemLabelPlural}: ${errorStr}`,
 				);
-			} catch (error) {
-				console.debug("Failed to delete status message:", error);
+			} catch (replyError) {
+				console.error("Failed to send error notification:", replyError);
 			}
 		}
 	}
@@ -119,10 +148,12 @@ export function createMediaGroupBuffer(config: MediaGroupConfig) {
 			// Rate limit on first item only
 			const [allowed, retryAfter] = rateLimiter.check(userId);
 			if (!allowed) {
-				await auditLogRateLimit(userId, username, retryAfter!);
-				await ctx.reply(
-					`⏳ Rate limited. Please wait ${retryAfter!.toFixed(1)} seconds.`,
-				);
+				if (retryAfter !== undefined) {
+					await auditLogRateLimit(userId, username, retryAfter);
+					await ctx.reply(
+						`⏳ Rate limited. Please wait ${retryAfter.toFixed(1)} seconds.`,
+					);
+				}
 				return false;
 			}
 
@@ -144,7 +175,9 @@ export function createMediaGroupBuffer(config: MediaGroupConfig) {
 			});
 		} else {
 			// Add to existing group
-			const group = pendingGroups.get(mediaGroupId)!;
+			const group = pendingGroups.get(mediaGroupId);
+			if (!group) return false;
+
 			group.items.push(itemPath);
 
 			// Update caption if this message has one

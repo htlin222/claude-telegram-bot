@@ -4,8 +4,9 @@
  * Rate limiting, path validation, command safety.
  */
 
-import { realpathSync } from "fs";
-import { normalize, resolve } from "path";
+import { realpathSync } from "node:fs";
+import { normalize, resolve } from "node:path";
+import { parse } from "shell-quote";
 import {
 	ALLOWED_PATHS,
 	BLOCKED_PATTERNS,
@@ -19,9 +20,15 @@ import type { RateLimitBucket } from "./types";
 // ============== Rate Limiter ==============
 
 // Bucket expiration time (1 hour) - prevents unbounded memory growth
-const BUCKET_EXPIRATION_MS = 60 * 60 * 1000;
+const BUCKET_EXPIRATION_MS = Number.parseInt(
+	process.env.BUCKET_EXPIRATION_MS || String(60 * 60 * 1000),
+	10,
+);
 // Cleanup interval (10 minutes)
-const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = Number.parseInt(
+	process.env.CLEANUP_INTERVAL_MS || String(10 * 60 * 1000),
+	10,
+);
 
 class RateLimiter {
 	private buckets = new Map<number, RateLimitBucket>();
@@ -145,7 +152,7 @@ export function isPathAllowed(path: string): boolean {
 			const allowedResolved = resolve(allowed);
 			if (
 				resolved === allowedResolved ||
-				resolved.startsWith(allowedResolved + "/")
+				resolved.startsWith(`${allowedResolved}/`)
 			) {
 				return true;
 			}
@@ -159,33 +166,69 @@ export function isPathAllowed(path: string): boolean {
 
 // ============== Command Safety ==============
 
+/**
+ * Extract rm command arguments from a parsed command.
+ * Handles cases where rm is part of a pipeline or compound command.
+ */
+function extractRmArgs(tokens: ReturnType<typeof parse>): string[] {
+	const args: string[] = [];
+	let inRmCommand = false;
+
+	for (const token of tokens) {
+		// Handle string tokens
+		if (typeof token === "string") {
+			if (token === "rm") {
+				inRmCommand = true;
+				continue;
+			}
+			if (inRmCommand) {
+				// Stop at shell operators that end the rm command
+				if (token === ";" || token === "&&" || token === "||") {
+					inRmCommand = false;
+					continue;
+				}
+				args.push(token);
+			}
+		} else if (typeof token === "object" && token !== null) {
+			// Handle shell-quote special objects (operators, etc.)
+			// These indicate command boundaries
+			if ("op" in token) {
+				inRmCommand = false;
+			}
+		}
+	}
+
+	return args;
+}
+
 export function checkCommandSafety(
 	command: string,
 ): [safe: boolean, reason: string] {
 	const lowerCommand = command.toLowerCase();
 
-	// Check blocked patterns
+	// Check blocked patterns first
 	for (const pattern of BLOCKED_PATTERNS) {
 		if (lowerCommand.includes(pattern.toLowerCase())) {
 			return [false, `Blocked pattern: ${pattern}`];
 		}
 	}
 
-	// Special handling for rm commands - validate paths
+	// Special handling for rm commands - validate paths using shell-quote
 	if (lowerCommand.includes("rm ")) {
 		try {
-			// Simple parsing: extract arguments after rm
-			const rmMatch = command.match(/rm\s+(.+)/i);
-			if (rmMatch) {
-				const args = rmMatch[1]!.split(/\s+/);
-				for (const arg of args) {
-					// Skip flags
-					if (arg.startsWith("-") || arg.length <= 1) continue;
+			// Use shell-quote to properly parse the command
+			const tokens = parse(command);
+			const rmArgs = extractRmArgs(tokens);
 
-					// Check if path is allowed
-					if (!isPathAllowed(arg)) {
-						return [false, `rm target outside allowed paths: ${arg}`];
-					}
+			for (const arg of rmArgs) {
+				// Skip flags (start with -)
+				if (arg.startsWith("-")) continue;
+				// Skip empty or very short args
+				if (arg.length <= 1) continue;
+
+				// Check if path is allowed
+				if (!isPathAllowed(arg)) {
+					return [false, `rm target outside allowed paths: ${arg}`];
 				}
 			}
 		} catch {

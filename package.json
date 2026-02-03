@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/shell-quote": "^1.7.5",
     "typedoc": "^0.28.16",
     "typedoc-plugin-markdown": "^4.9.0"
   },
@@ -49,6 +50,7 @@
     "@openai/codex-sdk": "^0.93.0",
     "grammy": "^1.38.4",
     "openai": "^6.15.0",
+    "shell-quote": "^1.8.3",
     "zod": "^4.2.1"
   }
 }

@@ -83,7 +83,10 @@ export async function checkPendingAskUserRequests(
 
 // Spinner frames for tool animation
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const TOOL_SPINNER_INTERVAL_MS = 3000; // Update every 3 seconds
+const TOOL_SPINNER_INTERVAL_MS = Number.parseInt(
+	process.env.TOOL_SPINNER_INTERVAL_MS || "3000",
+	10,
+); // Update every 3 seconds
 
 /**
  * Tracks state for streaming message updates.
@@ -97,7 +100,7 @@ export class StreamingState {
 
 	// Tool spinner state
 	currentToolMsg: Message | null = null;
-	currentToolContent: string = "";
+	currentToolContent = "";
 	toolSpinnerInterval: ReturnType<typeof setInterval> | null = null;
 	spinnerIndex = 0;
 
@@ -275,6 +278,14 @@ export function createStatusCallback(
 					reply_markup: keyboard,
 				});
 				state.toolMessages.push(timeoutMsg); // Will be deleted when done
+			} else if (statusType === "queued") {
+				// User's query was queued - show position
+				const queueMsg = await ctx.reply(`⏳ ${content}`);
+				state.toolMessages.push(queueMsg);
+			} else if (statusType === "queue_start") {
+				// Queued query is now starting
+				const startMsg = await ctx.reply(`🚀 ${content}`);
+				state.toolMessages.push(startMsg);
 			} else if (statusType === "done") {
 				// Stop any running tool spinner
 				state.stopToolSpinner();
@@ -288,12 +299,12 @@ export function createStatusCallback(
 					}
 				}
 
-				// Show action buttons after response completes with confetti effect 🎉
+				// Show action buttons after response completes with confetti effect
 				const actionKeyboard = new InlineKeyboard()
 					.text("Undo", "action:undo")
 					.text("Test", "action:test")
 					.text("Commit", "action:commit");
-				await ctx.reply("✅ Done", {
+				await ctx.reply("Done", {
 					reply_markup: actionKeyboard,
 					message_effect_id: MESSAGE_EFFECTS.CONFETTI,
 				});

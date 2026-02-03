@@ -11,7 +11,7 @@ import { checkCommandSafety, isAuthorized, rateLimiter } from "../security";
 import { session } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { createOrReuseWorktree } from "../worktree";
-import { createStatusCallback, StreamingState } from "./streaming";
+import { StreamingState, createStatusCallback } from "./streaming";
 
 /**
  * Execute a shell command and return output.
@@ -20,10 +20,14 @@ export async function execShellCommand(
 	command: string,
 	cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+	const shellTimeoutMs = Number.parseInt(
+		process.env.SHELL_COMMAND_TIMEOUT_MS || "30000",
+		10,
+	);
 	return new Promise((resolve) => {
 		const proc = spawn("bash", ["-c", command], {
 			cwd,
-			timeout: 30000, // 30s timeout
+			timeout: shellTimeoutMs,
 		});
 
 		let stdout = "";
@@ -70,7 +74,10 @@ export async function handleText(ctx: Context): Promise<void> {
 	const pendingWorktree = session.peekWorktreeRequest(userId);
 	if (pendingWorktree) {
 		const trimmed = message.trim();
-		if (trimmed.toLowerCase() === "/cancel" || trimmed.toLowerCase() === "cancel") {
+		if (
+			trimmed.toLowerCase() === "/cancel" ||
+			trimmed.toLowerCase() === "cancel"
+		) {
 			session.clearWorktreeRequest();
 			await ctx.reply("❌ Worktree request cancelled.");
 			return;
@@ -134,9 +141,7 @@ export async function handleText(ctx: Context): Promise<void> {
 				.text("Cancel", "shell:cancel");
 
 			await ctx.reply(
-				`⚠️ <b>Confirm shell command</b>\n\n` +
-					`📁 <code>${cwd}</code>\n` +
-					`💻 <code>${shellCmd.length > 200 ? `${shellCmd.slice(0, 200)}...` : shellCmd}</code>`,
+				`⚠️ <b>Confirm shell command</b>\n\n📁 <code>${cwd}</code>\n💻 <code>${shellCmd.length > 200 ? `${shellCmd.slice(0, 200)}...` : shellCmd}</code>`,
 				{
 					parse_mode: "HTML",
 					reply_markup: keyboard,
@@ -219,7 +224,7 @@ export async function handleText(ctx: Context): Promise<void> {
 					`Claude Code crashed, retrying (attempt ${attempt + 2}/${MAX_RETRIES + 1})...`,
 				);
 				await session.kill(); // Clear corrupted session
-				await ctx.reply(`⚠️ Claude crashed, retrying...`);
+				await ctx.reply("⚠️ Claude crashed, retrying...");
 				// Reset state for retry
 				state = new StreamingState();
 				statusCallback = createStatusCallback(ctx, state);

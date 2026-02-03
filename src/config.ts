@@ -39,7 +39,7 @@ export const ALLOWED_USERS: number[] = (
 )
 	.split(",")
 	.filter((x) => x.trim())
-	.map((x) => parseInt(x.trim(), 10))
+	.map((x) => Number.parseInt(x.trim(), 10))
 	.filter((x) => !Number.isNaN(x));
 
 export const WORKING_DIR = process.env.CLAUDE_WORKING_DIR || HOME;
@@ -200,15 +200,27 @@ export const BLOCKED_PATTERNS = [
 ];
 
 // Query timeout interval (3 minutes) - prompts user to continue or abort
-export const QUERY_TIMEOUT_MS = 180_000;
+export const QUERY_TIMEOUT_MS = Number.parseInt(
+	process.env.QUERY_TIMEOUT_MS || "180000",
+	10,
+);
 
 // Timeout for user to respond to "continue?" prompt (30 seconds)
 // If no response, query continues automatically
-export const TIMEOUT_PROMPT_WAIT_MS = 30_000;
+export const TIMEOUT_PROMPT_WAIT_MS = Number.parseInt(
+	process.env.TIMEOUT_PROMPT_WAIT_MS || "30000",
+	10,
+);
 
 // Maximum concurrent queries (prevents resource exhaustion)
-export const MAX_CONCURRENT_QUERIES = parseInt(
+export const MAX_CONCURRENT_QUERIES = Number.parseInt(
 	process.env.MAX_CONCURRENT_QUERIES || "3",
+	10,
+);
+
+// Maximum queue size for queries waiting when concurrent limit is reached
+export const MAX_QUERY_QUEUE_SIZE = Number.parseInt(
+	process.env.MAX_QUERY_QUEUE_SIZE || "10",
 	10,
 );
 
@@ -242,13 +254,19 @@ export const THINKING_DEEP_KEYWORDS = thinkingDeepKeywordsStr
 
 // ============== Media Group Settings ==============
 
-export const MEDIA_GROUP_TIMEOUT = 1000; // ms to wait for more photos in a group
+export const MEDIA_GROUP_TIMEOUT = Number.parseInt(
+	process.env.MEDIA_GROUP_TIMEOUT_MS || "1000",
+	10,
+); // ms to wait for more photos in a group
 
 // ============== Telegram Message Limits ==============
 
 export const TELEGRAM_MESSAGE_LIMIT = 4096; // Max characters per message
 export const TELEGRAM_SAFE_LIMIT = 4000; // Safe limit with buffer for formatting
-export const STREAMING_THROTTLE_MS = 500; // Throttle streaming updates
+export const STREAMING_THROTTLE_MS = Number.parseInt(
+	process.env.STREAMING_THROTTLE_MS || "500",
+	10,
+); // Throttle streaming updates
 export const BUTTON_LABEL_MAX_LENGTH = 30; // Max chars for inline button labels
 
 // ============== Telegram Message Effects ==============
@@ -270,25 +288,35 @@ export const AUDIT_LOG_JSON =
 	(process.env.AUDIT_LOG_JSON || "false").toLowerCase() === "true";
 
 // Audit log rotation: max size in bytes (default 10MB)
-export const AUDIT_LOG_MAX_SIZE = parseInt(
+export const AUDIT_LOG_MAX_SIZE = Number.parseInt(
 	process.env.AUDIT_LOG_MAX_SIZE || String(10 * 1024 * 1024),
 	10,
 );
 // Number of rotated files to keep (default 3: .log, .log.1, .log.2)
-export const AUDIT_LOG_MAX_FILES = parseInt(
+export const AUDIT_LOG_MAX_FILES = Number.parseInt(
 	process.env.AUDIT_LOG_MAX_FILES || "3",
 	10,
 );
+
+// ============== Logging ==============
+
+export type LogLevel = "debug" | "info" | "warn" | "error";
+const logLevelEnv = (process.env.LOG_LEVEL || "info").toLowerCase();
+export const LOG_LEVEL: LogLevel = ["debug", "info", "warn", "error"].includes(
+	logLevelEnv,
+)
+	? (logLevelEnv as LogLevel)
+	: "info";
 
 // ============== Rate Limiting ==============
 
 export const RATE_LIMIT_ENABLED =
 	(process.env.RATE_LIMIT_ENABLED || "true").toLowerCase() === "true";
-export const RATE_LIMIT_REQUESTS = parseInt(
+export const RATE_LIMIT_REQUESTS = Number.parseInt(
 	process.env.RATE_LIMIT_REQUESTS || "20",
 	10,
 );
-export const RATE_LIMIT_WINDOW = parseInt(
+export const RATE_LIMIT_WINDOW = Number.parseInt(
 	process.env.RATE_LIMIT_WINDOW || "60",
 	10,
 );

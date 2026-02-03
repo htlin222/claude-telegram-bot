@@ -9,6 +9,7 @@ interface BotEventsMap {
 	sessionRunning: boolean;
 	stopRequested: undefined;
 	interruptRequested: undefined;
+	queryFinished: undefined;
 }
 
 class BotEventEmitter {

@@ -144,7 +144,10 @@ if (existsSync(RESTART_FILE)) {
 const runner = run(bot);
 
 // Graceful shutdown
-const SHUTDOWN_TIMEOUT_MS = 5000;
+const SHUTDOWN_TIMEOUT_MS = Number.parseInt(
+	process.env.SHUTDOWN_TIMEOUT_MS || "5000",
+	10,
+);
 
 async function gracefulShutdown(signal: string): Promise<void> {
 	console.log(`\n${signal} received - initiating graceful shutdown...`);

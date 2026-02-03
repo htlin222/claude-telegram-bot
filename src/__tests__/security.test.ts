@@ -98,6 +98,81 @@ describe("checkCommandSafety", () => {
 		const [safe2] = checkCommandSafety("rm -rf /var/log");
 		expect(safe2).toBe(false);
 	});
+
+	test("handles commands with escaped spaces", () => {
+		// Escaped space in path - should properly parse as single argument
+		const [safe1] = checkCommandSafety("rm /tmp/my\\ file.txt");
+		expect(safe1).toBe(true);
+
+		// Escaped space in disallowed path
+		const [safe2, reason2] = checkCommandSafety("rm /etc/my\\ config.txt");
+		expect(safe2).toBe(false);
+		expect(reason2).toContain("outside allowed paths");
+	});
+
+	test("handles commands with single quotes", () => {
+		// Single-quoted path to temp
+		const [safe1] = checkCommandSafety("rm '/tmp/my file.txt'");
+		expect(safe1).toBe(true);
+
+		// Single-quoted path to disallowed location
+		const [safe2, reason2] = checkCommandSafety("rm '/etc/my config.txt'");
+		expect(safe2).toBe(false);
+		expect(reason2).toContain("outside allowed paths");
+	});
+
+	test("handles commands with double quotes", () => {
+		// Double-quoted path to temp
+		const [safe1] = checkCommandSafety('rm "/tmp/my file.txt"');
+		expect(safe1).toBe(true);
+
+		// Double-quoted path to disallowed location
+		const [safe2, reason2] = checkCommandSafety('rm "/etc/my config.txt"');
+		expect(safe2).toBe(false);
+		expect(reason2).toContain("outside allowed paths");
+	});
+
+	test("handles commands with special shell characters", () => {
+		// Path with special characters in temp
+		const [safe1] = checkCommandSafety("rm '/tmp/file[1].txt'");
+		expect(safe1).toBe(true);
+
+		// Path with asterisk (glob) - shell-quote preserves these
+		const [safe2] = checkCommandSafety("rm /tmp/*.txt");
+		expect(safe2).toBe(true);
+
+		// Command with semicolon (compound command)
+		const [safe3] = checkCommandSafety("echo hello; rm /tmp/test.txt");
+		expect(safe3).toBe(true);
+
+		// rm with pipe should stop at pipe
+		const [safe4] = checkCommandSafety("ls | rm /tmp/test.txt");
+		expect(safe4).toBe(true);
+	});
+
+	test("handles rm in compound commands", () => {
+		// rm after && with absolute path should be parsed correctly
+		const [safe1] = checkCommandSafety("cd /tmp && rm /tmp/test.txt");
+		expect(safe1).toBe(true);
+
+		// rm after || to disallowed path
+		const [safe2, reason2] = checkCommandSafety(
+			"test -f /etc/passwd || rm /etc/shadow",
+		);
+		expect(safe2).toBe(false);
+		expect(reason2).toContain("outside allowed paths");
+	});
+
+	test("handles multiple rm targets", () => {
+		// Multiple allowed targets
+		const [safe1] = checkCommandSafety("rm /tmp/a.txt /tmp/b.txt /tmp/c.txt");
+		expect(safe1).toBe(true);
+
+		// Mix of allowed and disallowed targets
+		const [safe2, reason2] = checkCommandSafety("rm /tmp/a.txt /etc/passwd");
+		expect(safe2).toBe(false);
+		expect(reason2).toContain("outside allowed paths");
+	});
 });
 
 describe("isAuthorized", () => {

@@ -126,7 +126,10 @@ class ClaudeSession {
 	// Debounced session saving
 	private _saveTimeout: ReturnType<typeof setTimeout> | null = null;
 	private _pendingSave = false;
-	private readonly SAVE_DEBOUNCE_MS = 500;
+	private readonly SAVE_DEBOUNCE_MS = Number.parseInt(
+		process.env.SAVE_DEBOUNCE_MS || "500",
+		10,
+	);
 
 	// Mutable working directory (can be changed with /cd)
 	private _workingDir: string = WORKING_DIR;
@@ -799,6 +802,7 @@ class ClaudeSession {
 				ClaudeSession._activeQueries - 1,
 			);
 			botEvents.emit("sessionRunning", false);
+			botEvents.emit("queryFinished", undefined);
 			this.abortController = null;
 			this.queryStarted = null;
 			this.currentTool = null;

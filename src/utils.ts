@@ -30,7 +30,10 @@ if (OPENAI_API_KEY && TRANSCRIPTION_AVAILABLE) {
 
 // Track last rotation check time to avoid checking on every write
 let lastRotationCheck = 0;
-const ROTATION_CHECK_INTERVAL_MS = 60_000; // Check every minute
+const ROTATION_CHECK_INTERVAL_MS = Number.parseInt(
+	process.env.ROTATION_CHECK_INTERVAL_MS || "60000",
+	10,
+); // Check every minute
 
 /**
  * Rotate audit log if it exceeds max size.
@@ -44,7 +47,7 @@ async function rotateAuditLogIfNeeded(): Promise<void> {
 	lastRotationCheck = now;
 
 	try {
-		const fs = await import("fs/promises");
+		const fs = await import("node:fs/promises");
 		const stats = await fs.stat(AUDIT_LOG_PATH).catch(() => null);
 
 		if (!stats || stats.size < AUDIT_LOG_MAX_SIZE) {
@@ -83,25 +86,25 @@ async function writeAuditLog(event: AuditEvent): Promise<void> {
 
 		let content: string;
 		if (AUDIT_LOG_JSON) {
-			content = JSON.stringify(event) + "\n";
+			content = `${JSON.stringify(event)}\n`;
 		} else {
 			// Plain text format for readability
-			const lines = ["\n" + "=".repeat(60)];
+			const lines = [`\n${"=".repeat(60)}`];
 			for (const [key, value] of Object.entries(event)) {
 				let displayValue = value;
 				if (
 					(key === "content" || key === "response") &&
 					String(value).length > 500
 				) {
-					displayValue = String(value).slice(0, 500) + "...";
+					displayValue = `${String(value).slice(0, 500)}...`;
 				}
 				lines.push(`${key}: ${displayValue}`);
 			}
-			content = lines.join("\n") + "\n";
+			content = `${lines.join("\n")}\n`;
 		}
 
 		// Append to audit log file
-		const fs = await import("fs/promises");
+		const fs = await import("node:fs/promises");
 		await fs.appendFile(AUDIT_LOG_PATH, content);
 	} catch (error) {
 		console.error("Failed to write audit log:", error);
