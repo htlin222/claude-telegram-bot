@@ -5,7 +5,7 @@
 
 **Repository description:** A Telegram bot that lets you drive Claude Code from your phone with streaming replies, file tooling, and MCP integrations.
 
-**中文說明**: `README.zh.md`
+**中文說明**: [README.zh.md](README.zh.md)
 
 ## Overview
 
