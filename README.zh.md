@@ -34,7 +34,24 @@ Claude Telegram Bot 讓你在 Telegram 直接控制 Claude Code，並將回覆�
 - **Claude Code CLI**（建議，供 SDK CLI 登入）
 - **OpenAI API Key**（可選，用於語音轉文字）
 
-### 安裝與啟動
+### 透過 npm 安裝（建議）
+
+套件： [npm 上的 ctb](https://www.npmjs.com/package/ctb)
+
+```bash
+npm install -g ctb
+
+# 顯示設定教學
+ctb tut
+
+# 在任何專案目錄啟動
+cd ~/my-project
+ctb
+```
+
+首次執行時，`ctb` 會提示輸入 Telegram Bot Token 與允許的使用者 ID，並可選擇寫入 `.env`。
+
+### 從原始碼安裝
 
 ```bash
 git clone https://github.com/htlin/claude-telegram-bot
@@ -101,7 +118,7 @@ OPENAI_API_KEY=sk-...                      # 語音轉文字
 
 本機器人刻意略過互動式權限確認以提升速度。請閱讀安全模型與保護機制：
 
-- `SECURITY.md`
+- `SECURITY.zh.md`
 
 ## License
 

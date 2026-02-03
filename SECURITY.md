@@ -2,6 +2,8 @@
 
 This document describes the security architecture of the Claude Telegram Bot.
 
+中文版本: [SECURITY.zh.md](SECURITY.zh.md)
+
 ## Permission Mode: Full Bypass
 
 **This bot runs Claude Code with all permission prompts disabled.**

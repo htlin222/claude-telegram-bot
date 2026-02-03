@@ -36,7 +36,24 @@ Claude Telegram Bot connects Telegram → Claude Code and streams responses (inc
 - **Claude Code CLI** (recommended, for SDK CLI auth)
 - **OpenAI API Key** (optional, for voice transcription)
 
-### Install & Run
+### Install via npm (Recommended)
+
+Package: [ctb on npm](https://www.npmjs.com/package/ctb)
+
+```bash
+npm install -g ctb
+
+# Show setup tutorial
+ctb tut
+
+# Run in any project directory
+cd ~/my-project
+ctb
+```
+
+On first run, `ctb` will prompt for your Telegram bot token and allowed user IDs, then optionally save them to `.env`.
+
+### Install from Source
 
 ```bash
 git clone https://github.com/htlin/claude-telegram-bot
