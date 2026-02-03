@@ -5,19 +5,19 @@
  */
 
 import { unlinkSync } from "node:fs";
-import { InlineKeyboard, type Context } from "grammy";
+import { type Context, InlineKeyboard } from "grammy";
 import { addBookmark, removeBookmark } from "../bookmarks";
 import {
 	AGENT_PROVIDERS,
 	ALLOWED_USERS,
-	MESSAGE_EFFECTS,
 	type AgentProviderId,
+	MESSAGE_EFFECTS,
 } from "../config";
 import { isAuthorized } from "../security";
 import { session } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
-import { createOrReuseWorktree } from "../worktree";
-import { createStatusCallback, StreamingState } from "./streaming";
+import { createOrReuseWorktree, getMergeInfo } from "../worktree";
+import { StreamingState, createStatusCallback } from "./streaming";
 import { execShellCommand } from "./text";
 
 /**
@@ -94,6 +94,12 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 2i. Handle merge callbacks
+	if (callbackData.startsWith("merge:")) {
+		await handleMergeCallback(ctx, userId, username, callbackData);
+		return;
+	}
+
 	// 3. Parse callback data: askuser:{request_id}:{option_index}
 	if (!callbackData.startsWith("askuser:")) {
 		await ctx.answerCallbackQuery();
@@ -108,7 +114,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
-	const optionIndex = parseInt(optionPart, 10);
+	const optionIndex = Number.parseInt(optionPart, 10);
 
 	// 3. Load request file
 	const requestFile = `/tmp/ask-user-${requestId}.json`;
@@ -742,5 +748,103 @@ async function handleSendFileCallback(
 	} catch (error) {
 		console.error("Failed to send file:", error);
 		await ctx.reply(`❌ Failed to send file: ${String(error).slice(0, 100)}`);
+	}
+}
+
+/**
+ * Handle merge callbacks.
+ * Format: merge:confirm:{base64branch} or merge:cancel
+ */
+async function handleMergeCallback(
+	ctx: Context,
+	userId: number,
+	username: string,
+	callbackData: string,
+): Promise<void> {
+	if (callbackData === "merge:cancel") {
+		await ctx.answerCallbackQuery({ text: "Merge cancelled" });
+		try {
+			await ctx.editMessageText("❌ Merge cancelled.");
+		} catch {}
+		return;
+	}
+
+	const prefix = "merge:confirm:";
+	if (!callbackData.startsWith(prefix)) {
+		await ctx.answerCallbackQuery({ text: "Invalid merge action" });
+		return;
+	}
+
+	let branchToMerge = "";
+	try {
+		const encoded = callbackData.slice(prefix.length);
+		branchToMerge = Buffer.from(encoded, "base64").toString("utf-8");
+	} catch {
+		await ctx.answerCallbackQuery({ text: "Invalid branch data" });
+		return;
+	}
+
+	if (!branchToMerge) {
+		await ctx.answerCallbackQuery({ text: "Invalid branch" });
+		return;
+	}
+
+	if (session.isRunning) {
+		await ctx.answerCallbackQuery({ text: "Stop the current query first." });
+		return;
+	}
+
+	// Get merge info to find main worktree
+	const info = await getMergeInfo(session.workingDir);
+	if (!info.success) {
+		await ctx.answerCallbackQuery({ text: info.message });
+		return;
+	}
+
+	// Switch to main worktree
+	session.flushSession();
+	session.setWorkingDir(info.mainWorktreePath);
+	await session.kill();
+
+	try {
+		await ctx.editMessageText(
+			`🔀 Switched to <code>${info.mainBranch}</code> worktree.\n\nMerging <code>${branchToMerge}</code>...`,
+			{ parse_mode: "HTML" },
+		);
+	} catch {}
+
+	await ctx.answerCallbackQuery({ text: `Merging ${branchToMerge}...` });
+
+	// Send merge command to Claude
+	const mergePrompt = `Merge the branch "${branchToMerge}" into "${info.mainBranch}".
+
+Steps:
+1. Run \`git merge ${branchToMerge}\`
+2. If there are merge conflicts, resolve them intelligently
+3. After resolving, stage and commit the merge
+4. Show me the result
+
+If the merge is clean, just complete it. If there are conflicts, explain what you're doing to resolve them.`;
+
+	const typing = startTypingIndicator(ctx);
+	const state = new StreamingState();
+	const statusCallback = createStatusCallback(ctx, state);
+	const chatId = ctx.chat?.id;
+
+	try {
+		const response = await session.sendMessageStreaming(
+			mergePrompt,
+			username,
+			userId,
+			statusCallback,
+			chatId,
+		);
+
+		await auditLog(userId, username, "MERGE", branchToMerge, response);
+	} catch (error) {
+		console.error("Merge error:", error);
+		await ctx.reply(`❌ Merge failed: ${String(error).slice(0, 200)}`);
+	} finally {
+		typing.stop();
 	}
 }

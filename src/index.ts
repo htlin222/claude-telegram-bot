@@ -23,12 +23,13 @@ import {
 	handleDocument,
 	handleFile,
 	handleHandoff,
+	handleMerge,
 	handleModel,
-	handleProvider,
 	handleNew,
 	handlePending,
 	handlePhoto,
 	handlePlan,
+	handleProvider,
 	handleRestart,
 	handleResume,
 	handleRetry,
@@ -39,8 +40,8 @@ import {
 	handleText,
 	handleThink,
 	handleUndo,
-	handleWorktree,
 	handleVoice,
+	handleWorktree,
 } from "./handlers";
 import { session } from "./session";
 
@@ -69,6 +70,7 @@ bot.command("model", handleModel);
 bot.command("provider", handleProvider);
 bot.command("worktree", handleWorktree);
 bot.command("branch", handleBranch);
+bot.command("merge", handleMerge);
 bot.command("cost", handleCost);
 bot.command("think", handleThink);
 bot.command("plan", handlePlan);

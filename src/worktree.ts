@@ -75,9 +75,7 @@ async function getRepoRoot(cwd: string): Promise<string | null> {
 	return result.stdout.trim() || null;
 }
 
-async function getWorktreeMap(
-	repoRoot: string,
-): Promise<Map<string, string>> {
+async function getWorktreeMap(repoRoot: string): Promise<Map<string, string>> {
 	const result = await execGit(["worktree", "list", "--porcelain"], repoRoot);
 	if (result.exitCode !== 0) {
 		return new Map();
@@ -97,9 +95,7 @@ async function getWorktreeMap(
 		if (line.startsWith("branch ")) {
 			const ref = line.slice("branch ".length).trim();
 			const prefix = "refs/heads/";
-			currentBranch = ref.startsWith(prefix)
-				? ref.slice(prefix.length)
-				: ref;
+			currentBranch = ref.startsWith(prefix) ? ref.slice(prefix.length) : ref;
 			continue;
 		}
 		if (line.trim() === "") {
@@ -136,9 +132,8 @@ export async function listBranches(cwd: string): Promise<BranchListResult> {
 	}
 
 	const currentResult = await execGit(["branch", "--show-current"], repoRoot);
-	const current = currentResult.exitCode === 0
-		? currentResult.stdout.trim() || null
-		: null;
+	const current =
+		currentResult.exitCode === 0 ? currentResult.stdout.trim() || null : null;
 
 	const listResult = await execGit(
 		["branch", "--format=%(refname:short)"],
@@ -157,6 +152,72 @@ export async function listBranches(cwd: string): Promise<BranchListResult> {
 		.filter(Boolean);
 
 	return { success: true, branches, current, repoRoot };
+}
+
+export type MergeInfo =
+	| {
+			success: true;
+			currentBranch: string;
+			mainBranch: string;
+			mainWorktreePath: string;
+			repoRoot: string;
+	  }
+	| {
+			success: false;
+			message: string;
+	  };
+
+async function getMainBranch(repoRoot: string): Promise<string | null> {
+	// Check for main first, then master
+	for (const branch of ["main", "master"]) {
+		const exists = await branchExists(repoRoot, branch);
+		if (exists) {
+			return branch;
+		}
+	}
+	return null;
+}
+
+/**
+ * Get merge info: current branch, main branch, and main worktree path.
+ * Used by /merge command.
+ */
+export async function getMergeInfo(cwd: string): Promise<MergeInfo> {
+	const repoRoot = await getRepoRoot(cwd);
+	if (!repoRoot) {
+		return { success: false, message: "Not inside a git repository." };
+	}
+
+	// Get current branch
+	const currentResult = await execGit(["branch", "--show-current"], repoRoot);
+	const currentBranch =
+		currentResult.exitCode === 0 ? currentResult.stdout.trim() : null;
+
+	if (!currentBranch) {
+		return { success: false, message: "Not on a branch (detached HEAD)." };
+	}
+
+	// Find main/master
+	const mainBranch = await getMainBranch(repoRoot);
+	if (!mainBranch) {
+		return { success: false, message: "No main or master branch found." };
+	}
+
+	if (currentBranch === mainBranch) {
+		return { success: false, message: `Already on ${mainBranch} branch.` };
+	}
+
+	// Find or determine main worktree path
+	const worktreeMap = await getWorktreeMap(repoRoot);
+	const mainWorktreePath = worktreeMap.get(mainBranch) ?? repoRoot;
+
+	return {
+		success: true,
+		currentBranch,
+		mainBranch,
+		mainWorktreePath,
+		repoRoot,
+	};
 }
 
 export async function createOrReuseWorktree(
@@ -206,8 +267,7 @@ export async function createOrReuseWorktree(
 	if (addResult.exitCode !== 0) {
 		return {
 			success: false,
-			message:
-				addResult.stderr.trim() || "Failed to create git worktree.",
+			message: addResult.stderr.trim() || "Failed to create git worktree.",
 		};
 	}
 

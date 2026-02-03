@@ -11,13 +11,13 @@ import { isBookmarked, loadBookmarks, resolvePath } from "../bookmarks";
 import {
 	AGENT_PROVIDERS,
 	ALLOWED_USERS,
-	RESTART_FILE,
 	type AgentProviderId,
+	RESTART_FILE,
 } from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
 import { session } from "../session";
 import { startTypingIndicator } from "../utils";
-import { listBranches } from "../worktree";
+import { getMergeInfo, listBranches } from "../worktree";
 
 /**
  * /start - Show welcome message and status.
@@ -60,6 +60,7 @@ Working directory: <code>${workDir}</code>
 /cd - Change working directory
 /worktree - Create and enter a git worktree
 /branch - Switch to a branch worktree
+/merge - Merge current branch into main
 /file - Download a file
 /undo - Revert file changes
 /skill - Invoke Claude Code skill
@@ -459,10 +460,7 @@ export async function handleProvider(ctx: Context): Promise<void> {
 		const current = session.currentProvider;
 		const keyboard = new InlineKeyboard();
 		for (const provider of AGENT_PROVIDERS) {
-			const label =
-				provider === current
-					? `✅ ${provider}`
-					: `⚪️ ${provider}`;
+			const label = provider === current ? `✅ ${provider}` : `⚪️ ${provider}`;
 			keyboard.text(label, `provider:set:${provider}`).row();
 		}
 
@@ -558,8 +556,7 @@ export async function handleBranch(ctx: Context): Promise<void> {
 	const keyboard = new InlineKeyboard();
 	for (const branch of result.branches) {
 		const encoded = Buffer.from(branch).toString("base64");
-		const label =
-			branch === result.current ? `✅ ${branch}` : `⚪️ ${branch}`;
+		const label = branch === result.current ? `✅ ${branch}` : `⚪️ ${branch}`;
 		if (encoded.length > 60) {
 			continue;
 		}
@@ -568,6 +565,42 @@ export async function handleBranch(ctx: Context): Promise<void> {
 
 	await ctx.reply(
 		`🌿 <b>Branches</b>\n\nCurrent: <b>${result.current ?? "detached"}</b>\n\nSelect a branch to switch:`,
+		{ parse_mode: "HTML", reply_markup: keyboard },
+	);
+}
+
+/**
+ * /merge - Merge current branch into main/master via Claude.
+ * Switches to main worktree first so Claude can see and resolve conflicts.
+ */
+export async function handleMerge(ctx: Context): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	if (session.isRunning) {
+		await ctx.reply("⚠️ A query is running. Use /stop first.");
+		return;
+	}
+
+	const result = await getMergeInfo(session.workingDir);
+	if (!result.success) {
+		await ctx.reply(`❌ ${result.message}`);
+		return;
+	}
+
+	const { currentBranch, mainBranch } = result;
+	const encodedBranch = Buffer.from(currentBranch).toString("base64");
+
+	const keyboard = new InlineKeyboard()
+		.text("Merge", `merge:confirm:${encodedBranch}`)
+		.text("Cancel", "merge:cancel");
+
+	await ctx.reply(
+		`🔀 <b>Merge Branch</b>\n\nMerge <code>${currentBranch}</code> → <code>${mainBranch}</code>\n\nThis will:\n1. Switch to <code>${mainBranch}</code> worktree\n2. Ask Claude to merge and resolve any conflicts`,
 		{ parse_mode: "HTML", reply_markup: keyboard },
 	);
 }
