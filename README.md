@@ -13,7 +13,7 @@ Claude Telegram Bot connects Telegram → Claude Code and streams responses (inc
 
 ## Features
 
-- 💬 Text, 🎤 voice, 📸 photos, 📄 documents
+- 💬 Text, 🎤 voice (with transcript editing), 📸 photos, 📄 documents
 - ⚡ Streaming responses with live tool status
 - 📨 Message queueing while Claude is busy
 - 🔘 Inline action buttons via `ask_user` MCP
@@ -21,6 +21,8 @@ Claude Telegram Bot connects Telegram → Claude Code and streams responses (inc
 - 🧵 Session persistence and `/resume`
 - 📁 Git worktrees, `/diff`, `/undo`, `/file`
 - 🗂️ File listing helpers: `/image`, `/pdf`, `/docx`, `/html`
+- ✏️ Voice transcript confirmation and editing before sending to Claude
+- 🔄 Smart `/restart` with TTY mode detection and confirmation dialog
 - 🛡️ Safety layers: allowlist, rate limits, path checks, command guardrails, audit log
 
 ## API Docs
@@ -79,6 +81,7 @@ OPENAI_API_KEY=sk-...                      # For voice transcription
 ```
 
 **Claude SDK authentication (recommended):**
+
 - This bot uses `@anthropic-ai/claude-agent-sdk`.
 - Prefer **CLI auth**: run `claude` once and sign in. This uses your Claude Code subscription and is typically more cost-effective.
 - Use `ANTHROPIC_API_KEY` only if you cannot use CLI auth (headless/CI environments).

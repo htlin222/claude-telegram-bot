@@ -441,7 +441,7 @@ async function handleActionCallback(
 	const commandMap: Record<string, string> = {
 		undo: "/undo",
 		test: "run unit tests",
-		commit: "/commit",
+		commit: "stage all and commit",
 		yes: "yes",
 	};
 

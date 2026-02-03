@@ -11,7 +11,7 @@ Claude Telegram Bot 讓你在 Telegram 直接控制 Claude Code，並將回覆�
 
 ## 功能
 
-- 💬 文字、🎤 語音、📸 圖片、📄 文件
+- 💬 文字、🎤 語音（支援轉錄編輯）、📸 圖片、📄 文件
 - ⚡ 串流回覆與工具狀態
 - 📨 Claude 忙碌時自動排隊訊息
 - 🔘 透過 `ask_user` MCP 的按鈕互動
@@ -19,6 +19,8 @@ Claude Telegram Bot 讓你在 Telegram 直接控制 Claude Code，並將回覆�
 - 🧵 Session 持久化與 `/resume`
 - 📁 Git worktree、`/diff`、`/undo`、`/file`
 - 🗂️ 快速列檔：`/image`、`/pdf`、`/docx`、`/html`
+- ✏️ 語音轉錄確認與編輯功能，送給 Claude 前可先檢查與補充
+- 🔄 智慧型 `/restart` 指令，支援 TTY 模式偵測與確認對話框
 - 🛡️ 安全層：白名單、限流、路徑檢查、指令保護、稽核紀錄
 
 ## API 文件
@@ -77,6 +79,7 @@ OPENAI_API_KEY=sk-...                      # 語音轉文字
 ```
 
 **Claude SDK 認證（建議）：**
+
 - 本專案使用 `@anthropic-ai/claude-agent-sdk`。
 - 優先使用 **CLI 登入**：執行一次 `claude` 並登入。這會使用 Claude Code 訂閱，通常成本較低。
 - 只有在無法 CLI 登入（如 CI/無頭環境）時才使用 `ANTHROPIC_API_KEY`。
