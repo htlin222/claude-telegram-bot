@@ -1,10 +1,11 @@
 /**
  * Command handlers for Claude Telegram Bot.
  *
- * /start, /new, /stop, /status, /resume, /restart, /cd, /bookmarks
+ * /start, /new, /stop, /status, /resume, /restart, /cd, /bookmarks, /image, /pdf, /docx, /html
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { extname, join } from "node:path";
 import type { Context } from "grammy";
 import { InlineKeyboard, InputFile } from "grammy";
 import { isBookmarked, loadBookmarks, resolvePath } from "../bookmarks";
@@ -13,6 +14,7 @@ import {
 	ALLOWED_USERS,
 	type AgentProviderId,
 	RESTART_FILE,
+	TELEGRAM_MESSAGE_LIMIT,
 } from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
 import { session } from "../session";
@@ -75,6 +77,10 @@ Working directory: <code>${workDir}</code>
 /merge - Merge current branch into main
 /diff - View uncommitted changes
 /file - Download a file
+/image - List image files
+/pdf - List PDF files
+/docx - List DOCX files
+/html - List HTML files
 /undo - Revert file changes
 /skill - Invoke Claude Code skill
 /bookmarks - Directory bookmarks
@@ -1115,6 +1121,153 @@ export async function handleFile(ctx: Context): Promise<void> {
 	if (error) {
 		await ctx.reply(`❌ ${error}`, { parse_mode: "HTML" });
 	}
+}
+
+const IMAGE_EXTENSIONS = [
+	".png",
+	".jpg",
+	".jpeg",
+	".gif",
+	".webp",
+	".bmp",
+	".tiff",
+	".tif",
+	".svg",
+	".heic",
+	".heif",
+	".avif",
+];
+const PDF_EXTENSIONS = [".pdf"];
+const DOCX_EXTENSIONS = [".docx"];
+const HTML_EXTENSIONS = [".html", ".htm"];
+
+const FILE_LIST_SAFE_LIMIT = Math.max(1000, TELEGRAM_MESSAGE_LIMIT - 200);
+
+function collectFilesByExtensions(
+	rootDir: string,
+	extensions: string[],
+): string[] {
+	const results: string[] = [];
+	const extensionSet = new Set(extensions.map((ext) => ext.toLowerCase()));
+
+	const walk = (dir: string): void => {
+		if (!isPathAllowed(dir)) return;
+		let entries: import("node:fs").Dirent[];
+		try {
+			entries = readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+
+		for (const entry of entries) {
+			const fullPath = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				walk(fullPath);
+			} else if (entry.isFile()) {
+				const ext = extname(entry.name).toLowerCase();
+				if (extensionSet.has(ext) && isPathAllowed(fullPath)) {
+					results.push(fullPath);
+				}
+			}
+		}
+	};
+
+	walk(rootDir);
+	return results.sort();
+}
+
+function buildFileListMessages(
+	title: string,
+	rootDir: string,
+	lines: string[],
+): string[] {
+	const messages: string[] = [];
+	const header = `${title} (${lines.length})\n📁 <code>${escapeHtml(rootDir)}</code>\n\n`;
+	const contHeader = `${title} (cont.)\n\n`;
+	let current = header;
+
+	for (const line of lines) {
+		const addition = `${line}\n`;
+		if (current.length + addition.length > FILE_LIST_SAFE_LIMIT) {
+			messages.push(current.trimEnd());
+			current = `${contHeader}${addition}`;
+		} else {
+			current += addition;
+		}
+	}
+
+	if (current.trim().length > 0) {
+		messages.push(current.trimEnd());
+	}
+
+	return messages;
+}
+
+async function handleListFilesByExtensions(
+	ctx: Context,
+	label: string,
+	emoji: string,
+	extensions: string[],
+): Promise<void> {
+	const userId = ctx.from?.id;
+
+	if (!isAuthorized(userId, ALLOWED_USERS)) {
+		await ctx.reply("Unauthorized.");
+		return;
+	}
+
+	const rootDir = session.workingDir;
+	if (!isPathAllowed(rootDir)) {
+		await ctx.reply(`❌ Access denied: <code>${escapeHtml(rootDir)}</code>`, {
+			parse_mode: "HTML",
+		});
+		return;
+	}
+
+	const files = collectFilesByExtensions(rootDir, extensions);
+	if (files.length === 0) {
+		await ctx.reply(
+			`${emoji} No ${label.toLowerCase()} found in <code>${escapeHtml(rootDir)}</code>.`,
+			{ parse_mode: "HTML" },
+		);
+		return;
+	}
+
+	const lines = files.map((filePath) => `<code>${escapeHtml(filePath)}</code>`);
+	const title = `${emoji} <b>${label}</b>`;
+	const messages = buildFileListMessages(title, rootDir, lines);
+
+	for (const message of messages) {
+		await ctx.reply(message, { parse_mode: "HTML" });
+	}
+}
+
+/**
+ * /image - List all image files under working directory.
+ */
+export async function handleImage(ctx: Context): Promise<void> {
+	await handleListFilesByExtensions(ctx, "Images", "🖼️", IMAGE_EXTENSIONS);
+}
+
+/**
+ * /pdf - List all PDF files under working directory.
+ */
+export async function handlePdf(ctx: Context): Promise<void> {
+	await handleListFilesByExtensions(ctx, "PDFs", "📄", PDF_EXTENSIONS);
+}
+
+/**
+ * /docx - List all DOCX files under working directory.
+ */
+export async function handleDocx(ctx: Context): Promise<void> {
+	await handleListFilesByExtensions(ctx, "DOCX", "📝", DOCX_EXTENSIONS);
+}
+
+/**
+ * /html - List all HTML files under working directory.
+ */
+export async function handleHtml(ctx: Context): Promise<void> {
+	await handleListFilesByExtensions(ctx, "HTML", "🌐", HTML_EXTENSIONS);
 }
 
 /**

@@ -21,14 +21,18 @@ import {
 	handleCompact,
 	handleCost,
 	handleDiff,
+	handleDocx,
 	handleDocument,
 	handleFile,
 	handleHandoff,
+	handleHtml,
+	handleImage,
 	handleMerge,
 	handleModel,
 	handleNew,
 	handlePending,
 	handlePhoto,
+	handlePdf,
 	handlePlan,
 	handleProvider,
 	handleRestart,
@@ -68,6 +72,10 @@ bot.command("retry", handleRetry);
 bot.command("cd", handleCd);
 bot.command("skill", handleSkill);
 bot.command("file", handleFile);
+bot.command("image", handleImage);
+bot.command("pdf", handlePdf);
+bot.command("docx", handleDocx);
+bot.command("html", handleHtml);
 bot.command("model", handleModel);
 bot.command("provider", handleProvider);
 bot.command("worktree", handleWorktree);

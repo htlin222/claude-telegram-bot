@@ -396,8 +396,8 @@ async function handlePendingCallback(
 }
 
 /**
- * Handle action callbacks (undo/test/commit).
- * Format: action:undo, action:test, action:commit
+ * Handle action callbacks (undo/test/commit/yes).
+ * Format: action:undo, action:test, action:commit, action:yes
  */
 async function handleActionCallback(
 	ctx: Context,
@@ -419,6 +419,7 @@ async function handleActionCallback(
 		undo: "/undo",
 		test: "run unit tests",
 		commit: "/commit",
+		yes: "yes",
 	};
 
 	const command = commandMap[action || ""];

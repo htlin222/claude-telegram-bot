@@ -303,7 +303,8 @@ export function createStatusCallback(
 				const actionKeyboard = new InlineKeyboard()
 					.text("Undo", "action:undo")
 					.text("Test", "action:test")
-					.text("Commit", "action:commit");
+					.text("Commit", "action:commit")
+					.text("Yes", "action:yes");
 				await ctx.reply("Done", {
 					reply_markup: actionKeyboard,
 					message_effect_id: MESSAGE_EFFECTS.CONFETTI,
