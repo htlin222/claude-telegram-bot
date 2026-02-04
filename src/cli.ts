@@ -15,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
-const VERSION = "1.3.7";
+const VERSION = "1.3.8";
 
 interface CliOptions {
 	token?: string;
