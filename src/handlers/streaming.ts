@@ -5,7 +5,7 @@
  */
 
 import type { Context } from "grammy";
-import { InlineKeyboard } from "grammy";
+import { GrammyError, InlineKeyboard } from "grammy";
 import type { Message } from "grammy/types";
 import {
 	BUTTON_LABEL_MAX_LENGTH,
@@ -190,11 +190,27 @@ export function createStatusCallback(
 						state.textMessages.set(segmentId, msg);
 						state.lastContent.set(segmentId, formatted);
 					} catch (htmlError) {
-						// HTML parse failed, fall back to plain text
-						console.debug("HTML reply failed, using plain text:", htmlError);
-						const msg = await ctx.reply(formatted);
-						state.textMessages.set(segmentId, msg);
-						state.lastContent.set(segmentId, formatted);
+						// Only retry without HTML on confirmed API rejection (400),
+						// not on network errors where the message may have already been delivered
+						if (
+							htmlError instanceof GrammyError &&
+							htmlError.error_code === 400
+						) {
+							console.debug(
+								"HTML parse rejected by Telegram, using plain text:",
+								htmlError.description,
+							);
+							const msg = await ctx.reply(display);
+							state.textMessages.set(segmentId, msg);
+							state.lastContent.set(segmentId, display);
+						} else {
+							// Network error or other issue - message may have been sent
+							// Don't retry to avoid sending duplicate messages
+							console.error(
+								"Failed to send segment message (not retrying to avoid duplicates):",
+								htmlError,
+							);
+						}
 					}
 					state.lastEditTimes.set(segmentId, now);
 				} else if (now - lastEdit > STREAMING_THROTTLE_MS) {
@@ -262,11 +278,22 @@ export function createStatusCallback(
 							try {
 								await ctx.reply(chunk, { parse_mode: "HTML" });
 							} catch (htmlError) {
-								console.debug(
-									"HTML chunk failed, using plain text:",
-									htmlError,
-								);
-								await ctx.reply(chunk);
+								// Only retry on confirmed 400 parse rejection to avoid duplicate chunks
+								if (
+									htmlError instanceof GrammyError &&
+									htmlError.error_code === 400
+								) {
+									console.debug(
+										"HTML chunk rejected, using plain text:",
+										htmlError.description,
+									);
+									await ctx.reply(chunk);
+								} else {
+									console.error(
+										"Failed to send chunk (not retrying to avoid duplicates):",
+										htmlError,
+									);
+								}
 							}
 						}
 					}

@@ -7,6 +7,7 @@ import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { ALLOWED_USERS, MESSAGE_EFFECTS } from "../config";
 import { formatUserError } from "../errors";
+import { escapeHtml } from "../formatting";
 import { queryQueue } from "../query-queue";
 import {
 	checkCommandSafety,
@@ -245,10 +246,17 @@ export async function handleText(ctx: Context): Promise<void> {
 			const errorStr = String(error);
 			const isClaudeCodeCrash = errorStr.includes("exited with code");
 
-			// Clean up any partial messages from this attempt
+			// Clean up any partial messages from this attempt (both tool and text)
 			for (const toolMsg of state.toolMessages) {
 				try {
 					await ctx.api.deleteMessage(toolMsg.chat.id, toolMsg.message_id);
+				} catch {
+					// Ignore cleanup errors
+				}
+			}
+			for (const [, textMsg] of state.textMessages) {
+				try {
+					await ctx.api.deleteMessage(textMsg.chat.id, textMsg.message_id);
 				} catch {
 					// Ignore cleanup errors
 				}
@@ -294,7 +302,52 @@ export async function handleText(ctx: Context): Promise<void> {
 		}
 	}
 
-	// 10. Cleanup
+	// 10. Auto-process pending messages to maintain sequence order.
+	// Messages get queued (via addPendingMessage) when a callback-triggered query
+	// is running (callbacks bypass sequentialization). Without auto-processing,
+	// the next text message would skip ahead of queued ones, causing sequence mismatch.
+	while (session.pendingCount > 0) {
+		const pending = session.getPendingMessages();
+		const next = pending[0];
+		if (!next) break;
+
+		const pendingText = session.removePendingMessage(next.id);
+		if (!pendingText) break;
+
+		const preview =
+			pendingText.length > 50 ? `${pendingText.slice(0, 50)}...` : pendingText;
+		await ctx.reply(
+			`🔄 Processing queued message: <code>${escapeHtml(preview)}</code>`,
+			{ parse_mode: "HTML" },
+		);
+
+		session.lastMessage = pendingText;
+
+		state = new StreamingState();
+		statusCallback = createStatusCallback(ctx, state);
+
+		try {
+			const response = await queryQueue.sendMessage(
+				pendingText,
+				username,
+				userId,
+				statusCallback,
+				chatId,
+				ctx,
+			);
+			await auditLog(userId, username, "AUTO_PENDING", pendingText, response);
+		} catch (error) {
+			console.error("Error auto-processing pending message:", error);
+			await ctx.reply(
+				`❌ Failed to process queued message: ${formatUserError(error as Error)}`,
+				{ message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN },
+			);
+			// Stop auto-processing on error but don't lose remaining messages
+			break;
+		}
+	}
+
+	// 11. Cleanup
 	stopProcessing();
 	typing.stop();
 }
