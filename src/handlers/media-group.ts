@@ -10,7 +10,7 @@ import type { Message } from "grammy/types";
 import { MEDIA_GROUP_TIMEOUT, MESSAGE_EFFECTS } from "../config";
 import { formatUserError } from "../errors";
 import { rateLimiter } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import type { PendingMediaGroup } from "../types";
 import { auditLogRateLimit } from "../utils";
 
@@ -216,8 +216,12 @@ export async function handleProcessingError(
 	ctx: Context,
 	error: unknown,
 	toolMessages: Message[],
+	chatId: number,
 ): Promise<void> {
 	console.error("Error processing media:", error);
+
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
 
 	// Clean up tool messages
 	for (const toolMsg of toolMessages) {

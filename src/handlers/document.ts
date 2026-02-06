@@ -9,7 +9,7 @@ import type { Context } from "grammy";
 import { ALLOWED_USERS, MESSAGE_EFFECTS, TEMP_DIR } from "../config";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, rateLimiter } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { cleanupTempFile, cleanupTempFiles } from "../utils/temp-cleanup";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
@@ -265,6 +265,9 @@ async function processArchive(
 	username: string,
 	chatId: number,
 ): Promise<void> {
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
+
 	const stopProcessing = session.startProcessing();
 	const typing = startTypingIndicator(ctx);
 
@@ -359,6 +362,9 @@ async function processDocuments(
 	username: string,
 	chatId: number,
 ): Promise<void> {
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
+
 	// Mark processing started
 	const stopProcessing = session.startProcessing();
 
@@ -403,7 +409,7 @@ async function processDocuments(
 			response,
 		);
 	} catch (error) {
-		await handleProcessingError(ctx, error, state.toolMessages);
+		await handleProcessingError(ctx, error, state.toolMessages, chatId);
 	} finally {
 		stopProcessing();
 		typing.stop();

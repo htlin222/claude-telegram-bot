@@ -18,7 +18,7 @@ import {
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import { startTypingIndicator } from "../utils";
 import {
 	getCombinedDiff,
@@ -39,12 +39,16 @@ const BRANCH_LIST_LIMIT = Number.parseInt(
  */
 export async function handleStart(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized. Contact the bot owner for access.");
 		return;
 	}
 
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 	const status = session.isActive ? "Active session" : "No active session";
 	const workDir = session.workingDir;
 
@@ -100,11 +104,16 @@ Working directory: <code>${workDir}</code>
  */
 export async function handleNew(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Stop any running query
 	if (session.isRunning) {
@@ -157,11 +166,16 @@ export async function handleNew(ctx: Context): Promise<void> {
  */
 export async function handleStop(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (session.isRunning) {
 		const result = await session.stop();
@@ -180,11 +194,16 @@ export async function handleStop(ctx: Context): Promise<void> {
  */
 export async function handleStatus(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const lines: string[] = ["📊 <b>Bot Status</b>\n"];
 
@@ -256,11 +275,16 @@ export async function handleStatus(ctx: Context): Promise<void> {
  */
 export async function handlePending(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const pending = session.getPendingMessages();
 
@@ -295,11 +319,16 @@ export async function handlePending(ctx: Context): Promise<void> {
  */
 export async function handleResume(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (session.isActive) {
 		await ctx.reply("Session already active. Use /new to start fresh first.");
@@ -397,6 +426,10 @@ export async function handleRestart(ctx: Context): Promise<void> {
 		return;
 	}
 
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
+
 	// Detect if running in terminal mode
 	const isTTY = process.stdout.isTTY;
 
@@ -456,11 +489,16 @@ export async function handleRestart(ctx: Context): Promise<void> {
  */
 export async function handleRetry(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Check if there's a message to retry
 	if (!session.lastMessage) {
@@ -502,11 +540,16 @@ export async function handleRetry(ctx: Context): Promise<void> {
  */
 export async function handleSkill(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Get the skill name and args from command
 	const text = ctx.message?.text || "";
@@ -551,11 +594,16 @@ export async function handleSkill(ctx: Context): Promise<void> {
  */
 export async function handleModel(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const text = ctx.message?.text || "";
 	const match = text.match(/^\/model\s+(\w+)$/i);
@@ -586,11 +634,16 @@ export async function handleModel(ctx: Context): Promise<void> {
  */
 export async function handleProvider(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const text = ctx.message?.text || "";
 	const match = text.match(/^\/provider\s+(\w+)$/i);
@@ -641,6 +694,8 @@ export async function handleWorktree(ctx: Context): Promise<void> {
 	if (!userId || !chatId) {
 		return;
 	}
+
+	const session = sessionManager.getSession(chatId);
 
 	if (session.isRunning) {
 		await ctx.reply("⚠️ A query is running. Use /stop first.");
@@ -693,11 +748,16 @@ export async function handleWorktree(ctx: Context): Promise<void> {
  */
 export async function handleBranch(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (session.isRunning) {
 		await ctx.reply("⚠️ A query is running. Use /stop first.");
@@ -778,11 +838,16 @@ export async function handleBranch(ctx: Context): Promise<void> {
  */
 export async function handleMerge(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (session.isRunning) {
 		await ctx.reply("⚠️ A query is running. Use /stop first.");
@@ -836,11 +901,16 @@ export async function handleMerge(ctx: Context): Promise<void> {
  */
 export async function handleCost(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const cost = session.estimateCost();
 	const formatNum = (n: number) => n.toLocaleString();
@@ -857,11 +927,16 @@ export async function handleCost(ctx: Context): Promise<void> {
  */
 export async function handleThink(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const text = ctx.message?.text || "";
 	const match = text.match(/^\/think\s+(\w+)$/i);
@@ -901,11 +976,16 @@ export async function handleThink(ctx: Context): Promise<void> {
  */
 export async function handlePlan(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	session.planMode = !session.planMode;
 
@@ -926,11 +1006,16 @@ export async function handlePlan(ctx: Context): Promise<void> {
  */
 export async function handleCompact(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (!session.isActive) {
 		await ctx.reply("❌ No active session to compact.", {
@@ -967,11 +1052,16 @@ function escapeHtml(text: string): string {
  */
 export async function handleHandoff(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const lastResponse = session.lastBotResponse;
 
@@ -1003,11 +1093,16 @@ export async function handleHandoff(ctx: Context): Promise<void> {
  */
 export async function handleUndo(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	if (!session.isActive) {
 		await ctx.reply("❌ No active session.", {
@@ -1056,11 +1151,16 @@ export async function handleUndo(ctx: Context): Promise<void> {
  */
 export async function handleCd(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Get the path argument from command
 	const text = ctx.message?.text || "";
@@ -1268,11 +1368,16 @@ async function sendFile(
  */
 export async function handleFile(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Get the path argument from command
 	const text = ctx.message?.text || "";
@@ -1507,11 +1612,16 @@ export async function handleHtml(ctx: Context): Promise<void> {
  */
 export async function handleBookmarks(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	const bookmarks = loadBookmarks();
 
@@ -1553,11 +1663,16 @@ export async function handleBookmarks(ctx: Context): Promise<void> {
  */
 export async function handleDiff(ctx: Context): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
+
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 
 	// Parse arguments
 	const text = ctx.message?.text || "";

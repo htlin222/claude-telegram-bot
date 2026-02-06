@@ -5,7 +5,14 @@
  * V1 supports full options (cwd, mcpServers, settingSources, etc.)
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import type { Context } from "grammy";
 import { resolvePath } from "./bookmarks";
 import {
@@ -178,8 +185,18 @@ class ClaudeSession {
 	// Pending voice edit (stores transcript waiting for user to add supplemental text)
 	private _pendingVoiceEdit: Map<number, string> = new Map();
 
+	// Chat ID tracking for per-chat session management
+	private _chatId: number | null = null;
+
 	private provider: AgentProvider<SDKMessage, Options, Query>;
 	private providerId: AgentProviderId;
+
+	/**
+	 * Set chat ID for this session (used for per-chat session management).
+	 */
+	setChatId(chatId: number): void {
+		this._chatId = chatId;
+	}
 
 	/**
 	 * Set the user's response to a timeout check prompt.
@@ -1029,9 +1046,20 @@ class ClaudeSession {
 	private _doSaveSession(): void {
 		if (!this.sessionId || !this._pendingSave) return;
 
+		this._pendingSave = false;
+		this._saveTimeout = null;
+
+		// If chat ID is set, delegate to SessionManager
+		if (this._chatId !== null) {
+			sessionManager.saveSession(this._chatId);
+			return;
+		}
+
+		// Fallback: save to old global session file (deprecated)
 		try {
 			const data: SessionData = {
 				version: SESSION_VERSION,
+				chat_id: 0, // Legacy: use 0 for global session
 				session_id: this.sessionId,
 				saved_at: new Date().toISOString(),
 				working_dir: this._workingDir,
@@ -1041,9 +1069,6 @@ class ClaudeSession {
 			console.log(`Session saved to ${SESSION_FILE}`);
 		} catch (error) {
 			console.warn(`Failed to save session: ${error}`);
-		} finally {
-			this._pendingSave = false;
-			this._saveTimeout = null;
 		}
 	}
 
@@ -1117,5 +1142,211 @@ class ClaudeSession {
 // Export class for testing
 export { ClaudeSession };
 
-// Global session instance
+// Session directory for per-chat sessions
+const SESSION_DIR = "/tmp/claude-telegram-sessions/";
+const IDLE_SESSION_CLEANUP_MS = Number.parseInt(
+	process.env.IDLE_SESSION_CLEANUP_MS || String(24 * 60 * 60 * 1000), // 24 hours
+	10,
+);
+
+/**
+ * SessionManager manages multiple ClaudeSession instances (one per chat).
+ */
+class SessionManager {
+	private sessions: Map<number, ClaudeSession> = new Map();
+
+	constructor() {
+		this.ensureSessionDir();
+	}
+
+	/**
+	 * Ensure session directory exists.
+	 */
+	private ensureSessionDir(): void {
+		if (!existsSync(SESSION_DIR)) {
+			mkdirSync(SESSION_DIR, { recursive: true, mode: 0o700 });
+			console.log(`Created session directory: ${SESSION_DIR}`);
+		}
+	}
+
+	/**
+	 * Get or create session for a chat.
+	 */
+	getSession(chatId: number): ClaudeSession {
+		if (!this.sessions.has(chatId)) {
+			const session = new ClaudeSession();
+
+			// Try to load from disk
+			const loaded = this.loadSessionFromDisk(chatId, session);
+
+			if (!loaded) {
+				// New session: use global default working dir
+				session.setWorkingDir(WORKING_DIR);
+			}
+
+			// Set chat ID
+			session.setChatId(chatId);
+
+			this.sessions.set(chatId, session);
+			console.log(`Created session for chat ${chatId}`);
+		}
+		return this.sessions.get(chatId)!;
+	}
+
+	/**
+	 * Load session from disk for a specific chat.
+	 */
+	private loadSessionFromDisk(chatId: number, session: ClaudeSession): boolean {
+		const sessionFile = `${SESSION_DIR}/${chatId}.json`;
+
+		try {
+			const file = Bun.file(sessionFile);
+			if (!file.size) return false;
+
+			const text = readFileSync(sessionFile, "utf-8");
+			const data: SessionData = JSON.parse(text);
+
+			if (!data.session_id || data.version !== SESSION_VERSION) {
+				return false;
+			}
+
+			session.sessionId = data.session_id;
+			session.lastActivity = new Date();
+
+			if (data.working_dir) {
+				session.setWorkingDir(data.working_dir);
+			}
+
+			console.log(
+				`Loaded session for chat ${chatId}: ${data.session_id.slice(0, 8)}...`,
+			);
+			return true;
+		} catch (error) {
+			console.warn(`Failed to load session for chat ${chatId}:`, error);
+			return false;
+		}
+	}
+
+	/**
+	 * Save session to disk for a specific chat.
+	 */
+	saveSession(chatId: number): void {
+		const session = this.sessions.get(chatId);
+		if (!session?.sessionId) return;
+
+		try {
+			const sessionFile = `${SESSION_DIR}/${chatId}.json`;
+			const data: SessionData = {
+				version: SESSION_VERSION,
+				chat_id: chatId,
+				session_id: session.sessionId,
+				saved_at: new Date().toISOString(),
+				working_dir: session.workingDir,
+			};
+
+			writeFileSync(sessionFile, JSON.stringify(data), { mode: 0o600 });
+			console.log(`Saved session for chat ${chatId}`);
+		} catch (error) {
+			console.warn(`Failed to save session for chat ${chatId}:`, error);
+		}
+	}
+
+	/**
+	 * Load all sessions from disk on startup.
+	 */
+	loadAllSessions(): void {
+		try {
+			if (!existsSync(SESSION_DIR)) return;
+
+			const files = readdirSync(SESSION_DIR);
+			let loaded = 0;
+
+			for (const file of files) {
+				if (!file.endsWith(".json")) continue;
+
+				const chatId = Number.parseInt(file.replace(".json", ""), 10);
+				if (Number.isNaN(chatId)) continue;
+
+				const session = new ClaudeSession();
+				if (this.loadSessionFromDisk(chatId, session)) {
+					session.setChatId(chatId);
+					this.sessions.set(chatId, session);
+					loaded++;
+				}
+			}
+
+			if (loaded > 0) {
+				console.log(`Restored ${loaded} session(s) from disk`);
+			}
+		} catch (error) {
+			console.warn("Failed to load sessions:", error);
+		}
+	}
+
+	/**
+	 * Get all active sessions.
+	 */
+	getAllActiveSessions(): Array<{
+		chatId: number;
+		session: ClaudeSession;
+	}> {
+		return Array.from(this.sessions.entries()).map(([chatId, session]) => ({
+			chatId,
+			session,
+		}));
+	}
+
+	/**
+	 * Clean up idle sessions.
+	 */
+	cleanupIdleSessions(maxIdleMs: number = IDLE_SESSION_CLEANUP_MS): number {
+		const now = Date.now();
+		let cleaned = 0;
+
+		for (const [chatId, session] of this.sessions) {
+			if (!session.lastActivity) continue;
+
+			const idleMs = now - session.lastActivity.getTime();
+			if (idleMs > maxIdleMs) {
+				this.sessions.delete(chatId);
+
+				// Delete session file
+				try {
+					const sessionFile = `${SESSION_DIR}/${chatId}.json`;
+					if (existsSync(sessionFile)) {
+						unlinkSync(sessionFile);
+					}
+				} catch (error) {
+					console.warn(
+						`Failed to delete session file for chat ${chatId}:`,
+						error,
+					);
+				}
+
+				cleaned++;
+				console.log(`Cleaned up idle session for chat ${chatId}`);
+			}
+		}
+
+		return cleaned;
+	}
+
+	/**
+	 * Flush all sessions to disk (for graceful shutdown).
+	 */
+	flushAllSessions(): void {
+		for (const [chatId, session] of this.sessions) {
+			if (session.sessionId) {
+				session.flushSession();
+				this.saveSession(chatId);
+			}
+		}
+	}
+}
+
+// Export singleton SessionManager
+export const sessionManager = new SessionManager();
+
+// Global session instance (DEPRECATED - will be removed)
+// Use sessionManager.getSession(chatId) instead
 export const session = new ClaudeSession();

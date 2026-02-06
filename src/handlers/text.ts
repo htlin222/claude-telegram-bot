@@ -15,7 +15,7 @@ import {
 	isPathAllowed,
 	rateLimiter,
 } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { createOrReuseWorktree } from "../worktree";
 import { createStatusCallback, StreamingState } from "./streaming";
@@ -76,6 +76,9 @@ export async function handleText(ctx: Context): Promise<void> {
 		await ctx.reply("Unauthorized. Contact the bot owner for access.");
 		return;
 	}
+
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
 
 	// 1a. Pending voice edit - user is adding supplemental text to voice transcript
 	const pendingVoice = session.consumePendingVoiceEdit(userId);

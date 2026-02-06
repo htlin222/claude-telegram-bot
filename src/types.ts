@@ -29,6 +29,7 @@ export interface RateLimitBucket {
 // Session persistence data
 export interface SessionData {
 	version: number;
+	chat_id: number;
 	session_id: string;
 	saved_at: string;
 	working_dir: string;

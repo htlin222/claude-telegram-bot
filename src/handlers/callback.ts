@@ -17,7 +17,7 @@ import { formatUserError } from "../errors";
 import { escapeHtml } from "../formatting";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, isPathAllowed } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import { auditLog, startTypingIndicator } from "../utils";
 import { logNonCriticalError } from "../utils/error-logging";
 import {
@@ -49,6 +49,9 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		await ctx.answerCallbackQuery({ text: "Unauthorized" });
 		return;
 	}
+
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
 
 	// 2. Handle voice confirmation callbacks
 	if (callbackData.startsWith("voice:")) {

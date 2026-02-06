@@ -13,7 +13,7 @@ import {
 } from "../config";
 import { formatUserError } from "../errors";
 import { isAuthorized, rateLimiter } from "../security";
-import { session } from "../session";
+import { sessionManager } from "../session";
 import {
 	auditLogRateLimit,
 	startTypingIndicator,
@@ -56,6 +56,9 @@ export async function handleVoice(ctx: Context): Promise<void> {
 		);
 		return;
 	}
+
+	// Get session for this chat
+	const session = sessionManager.getSession(chatId);
 
 	// 4. Mark processing started (allows /stop to work during transcription/classification)
 	const stopProcessing = session.startProcessing();
