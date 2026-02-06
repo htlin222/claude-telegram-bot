@@ -5,15 +5,17 @@
  * Can also be run directly with `bun run src/bot.ts` for backwards compatibility.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { run, sequentialize } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import {
 	ALLOWED_USERS,
+	PID_FILE,
 	RESTART_FILE,
 	TELEGRAM_TOKEN,
 	WORKING_DIR,
 } from "./config";
+import { safeUnlink } from "./utils/temp-cleanup";
 import {
 	handleBookmarks,
 	handleBranch,
@@ -41,7 +43,54 @@ import {
 	handleVoice,
 	handleWorktree,
 } from "./handlers";
-import { safeUnlink } from "./utils/temp-cleanup";
+
+// ============== Single Instance Lock ==============
+// Prevents two bot instances from running simultaneously for the same working directory.
+// If two instances poll Telegram, each receives different updates, causing missed messages
+// and duplicate responses.
+function acquirePidLock(): void {
+	const currentPid = process.pid;
+
+	if (existsSync(PID_FILE)) {
+		try {
+			const existingPid = Number.parseInt(
+				readFileSync(PID_FILE, "utf-8").trim(),
+				10,
+			);
+			if (!Number.isNaN(existingPid) && existingPid !== currentPid) {
+				try {
+					// Signal 0 just checks if the process exists, doesn't actually send a signal
+					process.kill(existingPid, 0);
+					// Process is alive - abort startup
+					console.error(
+						`ERROR: Another bot instance is already running (PID ${existingPid}).`,
+					);
+					console.error(`PID file: ${PID_FILE}`);
+					console.error(
+						"If the previous instance crashed, delete the PID file and retry.",
+					);
+					process.exit(1);
+				} catch {
+					// process.kill threw - the process doesn't exist, stale PID file
+					console.warn(
+						`Stale PID file found (PID ${existingPid} is not running). Taking over.`,
+					);
+				}
+			}
+		} catch {
+			// Couldn't read/parse PID file - overwrite it
+		}
+	}
+
+	writeFileSync(PID_FILE, String(currentPid), { mode: 0o600 });
+	console.log(`PID lock acquired: ${currentPid}`);
+}
+
+function releasePidLock(): void {
+	safeUnlink(PID_FILE);
+}
+
+acquirePidLock();
 
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
@@ -222,11 +271,13 @@ const stopRunner = () => {
 process.on("SIGINT", () => {
 	console.log("Received SIGINT");
 	stopRunner();
+	releasePidLock();
 	process.exit(0);
 });
 
 process.on("SIGTERM", () => {
 	console.log("Received SIGTERM");
 	stopRunner();
+	releasePidLock();
 	process.exit(0);
 });

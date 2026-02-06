@@ -4,11 +4,12 @@
  * Control Claude Code from your phone via Telegram.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { run } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import {
 	ALLOWED_USERS,
+	PID_FILE,
 	RESTART_FILE,
 	TELEGRAM_TOKEN,
 	WORKING_DIR,
@@ -50,6 +51,49 @@ import {
 } from "./handlers";
 import { session } from "./session";
 import { safeUnlink } from "./utils/temp-cleanup";
+
+// ============== Single Instance Lock ==============
+// Prevents two bot instances from running simultaneously for the same working directory.
+function acquirePidLock(): void {
+	const currentPid = process.pid;
+
+	if (existsSync(PID_FILE)) {
+		try {
+			const existingPid = Number.parseInt(
+				readFileSync(PID_FILE, "utf-8").trim(),
+				10,
+			);
+			if (!Number.isNaN(existingPid) && existingPid !== currentPid) {
+				try {
+					process.kill(existingPid, 0);
+					console.error(
+						`ERROR: Another bot instance is already running (PID ${existingPid}).`,
+					);
+					console.error(`PID file: ${PID_FILE}`);
+					console.error(
+						"If the previous instance crashed, delete the PID file and retry.",
+					);
+					process.exit(1);
+				} catch {
+					console.warn(
+						`Stale PID file found (PID ${existingPid} is not running). Taking over.`,
+					);
+				}
+			}
+		} catch {
+			// Couldn't read/parse PID file - overwrite it
+		}
+	}
+
+	writeFileSync(PID_FILE, String(currentPid), { mode: 0o600 });
+	console.log(`PID lock acquired: ${currentPid}`);
+}
+
+function releasePidLock(): void {
+	safeUnlink(PID_FILE);
+}
+
+acquirePidLock();
 
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
@@ -209,12 +253,16 @@ async function gracefulShutdown(signal: string): Promise<void> {
 		session.flushSession();
 		console.log("Session flushed");
 
+		// Release PID lock
+		releasePidLock();
+
 		// Clear the timeout and exit cleanly
 		clearTimeout(forceExit);
 		console.log("Shutdown complete");
 		process.exit(0);
 	} catch (error) {
 		console.error("Error during shutdown:", error);
+		releasePidLock();
 		clearTimeout(forceExit);
 		process.exit(1);
 	}
