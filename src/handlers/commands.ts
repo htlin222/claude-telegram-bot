@@ -1206,6 +1206,12 @@ export async function handleCd(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// Check if other sessions are using the same directory
+	const conflictingChats = sessionManager.getOtherSessionsUsingDirectory(
+		resolvedPath,
+		chatId,
+	);
+
 	// Change directory
 	session.setWorkingDir(resolvedPath);
 
@@ -1217,13 +1223,19 @@ export async function handleCd(ctx: Context): Promise<void> {
 		keyboard.text("➕ Add to bookmarks", `bookmark:add:${resolvedPath}`);
 	}
 
-	await ctx.reply(
-		`📁 Changed to: <code>${resolvedPath}</code>\n\nSession cleared. Next message starts fresh.`,
-		{
-			parse_mode: "HTML",
-			reply_markup: keyboard,
-		},
-	);
+	// Build response message
+	let message = `📁 Changed to: <code>${resolvedPath}</code>\n\nSession cleared. Next message starts fresh.`;
+
+	// Add warning if other sessions use same directory
+	if (conflictingChats.length > 0) {
+		const chatList = conflictingChats.map((id) => `#${id}`).join(", ");
+		message += `\n\n⚠️ <b>Warning:</b> Chat ${chatList} also uses this directory.\nSimultaneous edits may cause conflicts. Consider using <code>/worktree</code> to create an isolated branch.`;
+	}
+
+	await ctx.reply(message, {
+		parse_mode: "HTML",
+		reply_markup: keyboard,
+	});
 }
 
 // Text/code file extensions that should be displayed inline

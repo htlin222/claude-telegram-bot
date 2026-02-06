@@ -1342,6 +1342,26 @@ class SessionManager {
 			}
 		}
 	}
+
+	/**
+	 * Get chat IDs of other sessions using the same directory.
+	 * Used to warn about potential conflicts when changing working directory.
+	 */
+	getOtherSessionsUsingDirectory(dir: string, excludeChatId: number): number[] {
+		const normalizedDir = dir.replace(/\/+$/, ""); // Remove trailing slashes
+		const conflicts: number[] = [];
+
+		for (const [chatId, session] of this.sessions) {
+			if (chatId === excludeChatId) continue;
+
+			const sessionDir = session.workingDir.replace(/\/+$/, "");
+			if (sessionDir === normalizedDir) {
+				conflicts.push(chatId);
+			}
+		}
+
+		return conflicts;
+	}
 }
 
 // Export singleton SessionManager

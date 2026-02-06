@@ -24,6 +24,7 @@ Claude Telegram Bot connects Telegram → Claude Code and streams responses (inc
 - ✏️ Voice transcript confirmation and editing before sending to Claude
 - 🔄 Smart `/restart` with TTY mode detection and confirmation dialog
 - 🛡️ Safety layers: allowlist, rate limits, path checks, command guardrails, audit log
+- 🗂️ Per-chat sessions: each Telegram chat has its own independent Claude session
 
 ## API Docs
 
@@ -75,9 +76,25 @@ bun run start
 TELEGRAM_BOT_TOKEN=1234567890:ABC-DEF...
 TELEGRAM_ALLOWED_USERS=123456789
 
-# Recommended
-CLAUDE_WORKING_DIR=/path/to/your/folder
+# Optional
+CLAUDE_WORKING_DIR=/path/to/your/folder    # Fallback working directory
 OPENAI_API_KEY=sk-...                      # For voice transcription
+```
+
+### Working Directory
+
+The bot determines the working directory in this order:
+
+1. **CLI `--dir` flag**: `ctb --dir ~/my-project`
+2. **Current directory**: Where you run `ctb` (most common)
+3. **`CLAUDE_WORKING_DIR`**: Environment variable fallback
+4. **`$HOME`**: Last resort default
+
+**Typical usage:**
+
+```bash
+cd ~/my-project
+ctb              # Working dir = ~/my-project
 ```
 
 **Claude SDK authentication (recommended):**
@@ -91,6 +108,7 @@ OPENAI_API_KEY=sk-...                      # For voice transcription
 ### Session
 
 - `/start` `/new` `/resume` `/stop` `/status` `/retry` `/handoff` `/pending` `/restart`
+- `/sessions` - List all active sessions across chats
 
 ### Model & Reasoning
 
@@ -110,12 +128,32 @@ Prefix a message with `!` to run it in the working directory:
 !git status
 ```
 
+## Per-Chat Sessions
+
+Each Telegram chat maintains its own independent Claude session:
+
+- **Multiple projects**: Work on different projects in separate Telegram chats
+- **Independent history**: Each chat has its own conversation context
+- **Separate working dirs**: Use `/cd` in each chat to set different directories
+- **Session persistence**: Sessions survive bot restarts
+
+**Example workflow:**
+
+```
+Chat A: /cd ~/frontend    → Frontend development
+Chat B: /cd ~/backend     → Backend API work
+Chat C: /cd ~/docs        → Documentation
+```
+
+Use `/sessions` to view all active sessions across chats.
+
 ## Best Practices
 
-- Keep `CLAUDE_WORKING_DIR` small and focused; put a tailored `CLAUDE.md` there.
+- Run `ctb` from your project directory to auto-set the working directory.
 - Use `ALLOWED_PATHS` to explicitly scope where Claude can read/write.
 - Use `/worktree` for risky changes and `/diff` before `/commit`.
 - Prefer `/new` before unrelated tasks to keep context clean.
+- Use separate Telegram chats for different projects (per-chat sessions).
 - Use `/image`/`/pdf`/`/docx`/`/html` to quickly locate files for `/file`.
 - Enable CLI auth for the Claude SDK to reduce cost and avoid API-key throttling.
 
