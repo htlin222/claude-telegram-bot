@@ -10,10 +10,12 @@ import { run, sequentialize } from "@grammyjs/runner";
 import { Bot } from "grammy";
 import {
 	ALLOWED_USERS,
+	PID_LOCK_FILE,
 	RESTART_FILE,
 	TELEGRAM_TOKEN,
 	WORKING_DIR,
 } from "./config";
+import { acquirePidLock, releasePidLock } from "./pid-lock";
 import {
 	handleBookmarks,
 	handleBranch,
@@ -139,6 +141,16 @@ bot.catch((err) => {
 	console.error("Bot error:", err);
 });
 
+// ============== PID Lock ==============
+
+const lockResult = acquirePidLock(PID_LOCK_FILE);
+if (!lockResult.acquired) {
+	console.error(
+		`Another instance is already running (PID ${lockResult.existingPid}). Exiting.`,
+	);
+	process.exit(1);
+}
+
 // ============== Startup ==============
 
 console.log("=".repeat(50));
@@ -221,12 +233,14 @@ const stopRunner = () => {
 
 process.on("SIGINT", () => {
 	console.log("Received SIGINT");
+	releasePidLock(PID_LOCK_FILE);
 	stopRunner();
 	process.exit(0);
 });
 
 process.on("SIGTERM", () => {
 	console.log("Received SIGTERM");
+	releasePidLock(PID_LOCK_FILE);
 	stopRunner();
 	process.exit(0);
 });

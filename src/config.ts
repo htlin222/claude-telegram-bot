@@ -342,6 +342,7 @@ const INSTANCE_TEMP_DIR = `/tmp/ctb-${INSTANCE_HASH}`;
 
 export const SESSION_FILE = `${INSTANCE_TEMP_DIR}/session.json`;
 export const RESTART_FILE = `${INSTANCE_TEMP_DIR}/restart.json`;
+export const PID_LOCK_FILE = `${INSTANCE_TEMP_DIR}/pid.lock`;
 export const TEMP_DIR = `${INSTANCE_TEMP_DIR}/downloads`;
 
 // Temp paths that are always allowed for bot operations
