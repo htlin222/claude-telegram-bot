@@ -54,6 +54,28 @@ import { safeUnlink } from "./utils/temp-cleanup";
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
 
+// ============== Update Deduplication ==============
+// Prevents processing the same Telegram update twice (e.g., during bot restarts,
+// network retries, or Telegram server-side redelivery).
+const DEDUP_WINDOW = 1000;
+const processedUpdateIds = new Set<number>();
+const updateIdQueue: number[] = [];
+
+bot.use(async (ctx, next) => {
+	const updateId = ctx.update.update_id;
+	if (processedUpdateIds.has(updateId)) {
+		console.log(`Skipping duplicate update ${updateId}`);
+		return;
+	}
+	processedUpdateIds.add(updateId);
+	updateIdQueue.push(updateId);
+	while (updateIdQueue.length > DEDUP_WINDOW) {
+		const old = updateIdQueue.shift();
+		if (old !== undefined) processedUpdateIds.delete(old);
+	}
+	return next();
+});
+
 // Note: sequentialize removed - messages during active query are now queued
 // and can be viewed/executed via /pending command
 
