@@ -911,7 +911,9 @@ class ClaudeSession {
 		// If ask_user was triggered, return early - user will respond via button
 		if (askUserTriggered) {
 			await statusCallback("done", "", undefined, this.lastUsage || undefined);
-			return "[Waiting for user selection]";
+			const waitingResponse = "[Waiting for user selection]";
+			this.lastBotResponse = responseParts.join("") || waitingResponse;
+			return waitingResponse;
 		}
 
 		// Emit final segment
