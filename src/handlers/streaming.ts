@@ -13,9 +13,11 @@ import {
 	STREAMING_THROTTLE_MS,
 	TELEGRAM_MESSAGE_LIMIT,
 	TELEGRAM_SAFE_LIMIT,
+	TOKEN_WARNING_THRESHOLD,
 } from "../config";
 import { convertMarkdownToHtml, escapeHtml } from "../formatting";
 import { safeTelegramCall } from "../telegram-api";
+import { sessionManager } from "../session";
 import type { StatusCallback } from "../types";
 
 /**
@@ -125,8 +127,14 @@ export class StreamingState {
 export function createStatusCallback(
 	ctx: Context,
 	state: StreamingState,
+	chatId?: number,
 ): StatusCallback {
-	return async (statusType: string, content: string, segmentId?: number) => {
+	return async (
+		statusType: string,
+		content: string,
+		segmentId?: number,
+		usage?,
+	) => {
 		try {
 			if (statusType === "thinking") {
 				// Show thinking inline, compact (first 500 chars)
@@ -329,13 +337,39 @@ export function createStatusCallback(
 				}
 
 				if (state.hasToolExecution) {
+					// Build usage info string if available
+					let doneMessage = "Done";
+					if (usage) {
+						const inK = Math.round(usage.input_tokens / 1000);
+						const outK = Math.round(usage.output_tokens / 1000);
+						const cacheK = usage.cache_read_input_tokens
+							? Math.round(usage.cache_read_input_tokens / 1000)
+							: 0;
+						doneMessage += ` | ${inK}K→${outK}K`;
+						if (cacheK > 0) {
+							doneMessage += ` (⚡${cacheK}K)`;
+						}
+					}
+
+					// Check session total token usage and add warning if needed
+					if (chatId) {
+						const session = sessionManager.getSession(chatId);
+						const totalTokens =
+							session.totalInputTokens + session.totalOutputTokens;
+
+						if (totalTokens > TOKEN_WARNING_THRESHOLD) {
+							const totalK = Math.round(totalTokens / 1000);
+							doneMessage += ` | ⚠️ ${totalK}K total`;
+						}
+					}
+
 					// Show action buttons after response completes with confetti effect
 					const actionKeyboard = new InlineKeyboard()
 						.text("Undo", "action:undo")
-						.text("Test", "action:test")
 						.text("Commit", "action:commit")
-						.text("Yes", "action:yes");
-					await ctx.reply("Done", {
+						.text("Yes", "action:yes")
+						.text("Handoff", "action:handoff");
+					await ctx.reply(doneMessage, {
 						reply_markup: actionKeyboard,
 						message_effect_id: MESSAGE_EFFECTS.CONFETTI,
 					});

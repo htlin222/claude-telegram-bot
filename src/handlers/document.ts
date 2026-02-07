@@ -304,7 +304,7 @@ async function processArchive(
 
 		// Create streaming state
 		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state);
+		const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 		const response = await queryQueue.sendMessage(
 			prompt,
@@ -389,7 +389,7 @@ async function processDocuments(
 
 	// Create streaming state
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state);
+	const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 	try {
 		const response = await queryQueue.sendMessage(

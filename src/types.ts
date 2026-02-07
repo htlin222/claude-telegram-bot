@@ -18,6 +18,7 @@ export type StatusCallback = (
 		| "queue_start",
 	content: string,
 	segmentId?: number,
+	usage?: TokenUsage,
 ) => Promise<void>;
 
 // Rate limit bucket for token bucket algorithm

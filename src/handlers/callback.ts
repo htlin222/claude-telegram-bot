@@ -212,7 +212,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
 
 	// Create streaming state
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state);
+	const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 	try {
 		const response = await queryQueue.sendMessage(
@@ -392,7 +392,7 @@ async function handlePendingCallback(
 		// Execute the message
 		const typing = startTypingIndicator(ctx);
 		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state);
+		const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 		try {
 			const response = await queryQueue.sendMessage(
@@ -422,8 +422,8 @@ async function handlePendingCallback(
 }
 
 /**
- * Handle action callbacks (undo/test/commit/yes).
- * Format: action:undo, action:test, action:commit, action:yes
+ * Handle action callbacks (undo/commit/yes/handoff).
+ * Format: action:undo, action:commit, action:yes, action:handoff
  */
 async function handleActionCallback(
 	ctx: Context,
@@ -440,10 +440,37 @@ async function handleActionCallback(
 		// Message may have been deleted
 	}
 
+	// Handle handoff separately - it's not a command but a special action
+	if (action === "handoff") {
+		await ctx.answerCallbackQuery({ text: "Starting handoff..." });
+
+		const chatId = ctx.chat?.id;
+		if (!chatId) return;
+
+		const session = sessionManager.getSession(chatId);
+		const lastResponse = session.lastBotResponse;
+
+		if (!lastResponse) {
+			await ctx.reply("❌ No response to hand off");
+			return;
+		}
+
+		// Save the response as handoff context
+		session.setHandoffContext(lastResponse);
+
+		// Kill session
+		await session.kill();
+
+		await ctx.reply(
+			"✅ Session compressed. Last response will be used as context in your next message.",
+			{ message_effect_id: MESSAGE_EFFECTS.CONFETTI },
+		);
+		return;
+	}
+
 	// Map action to Claude command
 	const commandMap: Record<string, string> = {
 		undo: "/undo",
-		test: "run unit tests",
 		commit: "stage all and commit",
 		yes: "yes",
 	};
@@ -459,7 +486,7 @@ async function handleActionCallback(
 	// Send the command to Claude
 	const typing = startTypingIndicator(ctx);
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state);
+	const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 	try {
 		const response = await queryQueue.sendMessage(
@@ -921,7 +948,7 @@ If the merge is clean, just complete it. If there are conflicts, explain what yo
 
 	const typing = startTypingIndicator(ctx);
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state);
+	const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 	const chatId = ctx.chat?.id;
 
 	try {
@@ -1050,7 +1077,7 @@ async function handleDiffCallback(
 		// Send commit command to Claude
 		const typing = startTypingIndicator(ctx);
 		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state);
+		const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 		const chatId = ctx.chat?.id;
 
 		try {
@@ -1210,7 +1237,7 @@ async function handleVoiceCallback(
 		// Send to Claude
 		const typing = startTypingIndicator(ctx);
 		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state);
+		const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
 
 		try {
 			const response = await queryQueue.sendMessage(

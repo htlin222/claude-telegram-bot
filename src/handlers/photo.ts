@@ -82,7 +82,7 @@ async function processPhotos(
 
 	// Create streaming state
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state);
+	const statusCallback = createStatusCallback(ctx, state, chatId);
 
 	try {
 		const response = await queryQueue.sendMessage(

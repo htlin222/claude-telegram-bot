@@ -226,7 +226,7 @@ export async function handleText(ctx: Context): Promise<void> {
 
 	// 7. Create streaming state and callback
 	let state = new StreamingState();
-	let statusCallback = createStatusCallback(ctx, state);
+	let statusCallback = createStatusCallback(ctx, state, chatId);
 
 	// 8. Send to Claude with retry logic for crashes
 	const MAX_RETRIES = 1;
@@ -274,7 +274,7 @@ export async function handleText(ctx: Context): Promise<void> {
 				await ctx.reply("⚠️ Claude crashed, retrying...");
 				// Reset state for retry
 				state = new StreamingState();
-				statusCallback = createStatusCallback(ctx, state);
+				statusCallback = createStatusCallback(ctx, state, chatId);
 				continue;
 			}
 
@@ -327,7 +327,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		session.lastMessage = pendingText;
 
 		state = new StreamingState();
-		statusCallback = createStatusCallback(ctx, state);
+		statusCallback = createStatusCallback(ctx, state, chatId);
 
 		try {
 			const response = await queryQueue.sendMessage(

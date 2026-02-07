@@ -271,6 +271,14 @@ export const STREAMING_THROTTLE_MS = Number.parseInt(
 ); // Throttle streaming updates
 export const BUTTON_LABEL_MAX_LENGTH = 30; // Max chars for inline button labels
 
+// ============== Token Usage Warning ==============
+
+// Warn when cumulative session tokens exceed this threshold
+export const TOKEN_WARNING_THRESHOLD = Number.parseInt(
+	process.env.TOKEN_WARNING_THRESHOLD || "100000",
+	10,
+); // Default: 100K tokens
+
 // ============== Telegram Message Effects ==============
 // https://core.telegram.org/api/effects
 export const MESSAGE_EFFECTS = {

@@ -910,7 +910,7 @@ class ClaudeSession {
 
 		// If ask_user was triggered, return early - user will respond via button
 		if (askUserTriggered) {
-			await statusCallback("done", "");
+			await statusCallback("done", "", undefined, this.lastUsage || undefined);
 			return "[Waiting for user selection]";
 		}
 
@@ -919,7 +919,7 @@ class ClaudeSession {
 			await statusCallback("segment_end", currentSegmentText, currentSegmentId);
 		}
 
-		await statusCallback("done", "");
+		await statusCallback("done", "", undefined, this.lastUsage || undefined);
 
 		const finalResponse =
 			forcedResponse || responseParts.join("") || "No response from Claude.";

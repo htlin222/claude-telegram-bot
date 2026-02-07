@@ -52,8 +52,27 @@ export async function handleStart(ctx: Context): Promise<void> {
 	const status = session.isActive ? "Active session" : "No active session";
 	const workDir = session.workingDir;
 
+	// Check launch mode and show appropriate badge
+	const isCtb = !!process.env.CTB_INSTANCE_DIR;
+	let modeInfo = "";
+	if (isCtb) {
+		try {
+			// Read package.json for version
+			const packageJsonPath = new URL("../../package.json", import.meta.url)
+				.pathname;
+			const packageJson = await Bun.file(packageJsonPath).json();
+			const version = packageJson.version || "unknown";
+			modeInfo = ` v${version}`;
+		} catch {
+			// Ignore version read errors
+		}
+	} else {
+		// Development mode (bun run start)
+		modeInfo = " 👨‍💻 開發模式";
+	}
+
 	await ctx.reply(
-		`🤖 <b>Claude Telegram Bot</b>
+		`🤖 <b>Claude Telegram Bot${modeInfo}</b>
 
 Status: ${status}
 Working directory: <code>${workDir}</code>
