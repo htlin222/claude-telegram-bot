@@ -18,6 +18,7 @@ import { escapeHtml } from "../formatting";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, isPathAllowed } from "../security";
 import { sessionManager } from "../session";
+import { withRetry } from "../telegram-api";
 import { auditLog, startTypingIndicator } from "../utils";
 import { logNonCriticalError } from "../utils/error-logging";
 import {
@@ -245,20 +246,24 @@ export async function handleCallback(ctx: Context): Promise<void> {
 			// Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message
 			const wasInterrupt = session.consumeInterruptFlag();
 			if (!wasInterrupt) {
-				await ctx.reply("🛑 Query stopped.");
+				await withRetry(() => ctx.reply("🛑 Query stopped."));
 			}
 		} else if (isClaudeCodeCrash) {
 			await session.kill(); // Clear possibly corrupted session
-			await ctx.reply(
-				"⚠️ Claude Code crashed and the session was reset. Please try again.",
+			await withRetry(() =>
+				ctx.reply(
+					"⚠️ Claude Code crashed and the session was reset. Please try again.",
+				),
 			);
 		} else {
 			const userMessage = formatUserError(
 				error instanceof Error ? error : new Error(errorStr),
 			);
-			await ctx.reply(`❌ ${userMessage}`, {
-				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
-			});
+			await withRetry(() =>
+				ctx.reply(`❌ ${userMessage}`, {
+					message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
+				}),
+			);
 		}
 	} finally {
 		typing.stop();
@@ -300,6 +305,9 @@ async function handleShellCallback(
 
 		await ctx.answerCallbackQuery({ text: "Running..." });
 
+		const chatId = ctx.chat?.id;
+		if (!chatId) return;
+		const session = sessionManager.getSession(chatId);
 		const cwd = session.workingDir;
 		try {
 			await ctx.editMessageText(
@@ -343,6 +351,10 @@ async function handlePendingCallback(
 	username: string,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const parts = callbackData.split(":");
 	const action = parts[1];
 
@@ -519,6 +531,10 @@ async function handleTimeoutCallback(
 	ctx: Context,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const action = callbackData.split(":")[1];
 
 	if (action === "abort") {
@@ -549,6 +565,10 @@ async function handleBookmarkCallback(
 	ctx: Context,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const parts = callbackData.split(":");
 	if (parts.length < 2) {
 		await ctx.answerCallbackQuery({ text: "Invalid bookmark action" });
@@ -639,6 +659,10 @@ async function handleHandoffCallback(
 	ctx: Context,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const action = callbackData.split(":")[1];
 
 	if (action === "cancel") {
@@ -688,6 +712,10 @@ async function handleProviderCallback(
 	ctx: Context,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const parts = callbackData.split(":");
 	const action = parts[1];
 	const provider = parts[2] as AgentProviderId | undefined;
@@ -737,6 +765,8 @@ async function handleBranchCallback(
 	chatId: number,
 	callbackData: string,
 ): Promise<void> {
+	const session = sessionManager.getSession(chatId);
+
 	const prefix = "branch:switch:";
 	if (!callbackData.startsWith(prefix)) {
 		await ctx.answerCallbackQuery({ text: "Invalid branch action" });
@@ -812,6 +842,10 @@ async function handleSendFileCallback(
 	ctx: Context,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const { existsSync } = await import("node:fs");
 	const { basename } = await import("node:path");
 	const { InputFile } = await import("grammy");
@@ -866,6 +900,10 @@ async function handleMergeCallback(
 	username: string,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	if (callbackData === "merge:cancel") {
 		await ctx.answerCallbackQuery({ text: "Merge cancelled" });
 		try {
@@ -948,8 +986,7 @@ If the merge is clean, just complete it. If there are conflicts, explain what yo
 
 	const typing = startTypingIndicator(ctx);
 	const state = new StreamingState();
-	const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
-	const chatId = ctx.chat?.id;
+	const statusCallback = createStatusCallback(ctx, state, chatId);
 
 	try {
 		const response = await queryQueue.sendMessage(
@@ -981,6 +1018,10 @@ async function handleDiffCallback(
 	username: string,
 	callbackData: string,
 ): Promise<void> {
+	const chatId = ctx.chat?.id;
+	if (!chatId) return;
+	const session = sessionManager.getSession(chatId);
+
 	const parts = callbackData.split(":");
 	const action = parts[1];
 
@@ -1077,8 +1118,7 @@ async function handleDiffCallback(
 		// Send commit command to Claude
 		const typing = startTypingIndicator(ctx);
 		const state = new StreamingState();
-		const statusCallback = createStatusCallback(ctx, state, ctx.chat?.id);
-		const chatId = ctx.chat?.id;
+		const statusCallback = createStatusCallback(ctx, state, chatId);
 
 		try {
 			const response = await queryQueue.sendMessage(
@@ -1176,6 +1216,8 @@ async function handleVoiceCallback(
 	chatId: number,
 	callbackData: string,
 ): Promise<void> {
+	const session = sessionManager.getSession(chatId);
+
 	const parts = callbackData.split(":");
 	const action = parts[1];
 
@@ -1295,7 +1337,7 @@ async function handleVoiceCallback(
 
 /**
  * Handle restart confirmation callbacks.
- * Format: restart:confirm or restart:cancel
+ * Format: restart:confirm, restart:cancel, restart:start, restart:new, restart:status
  */
 async function handleRestartCallback(
 	ctx: Context,
@@ -1326,6 +1368,28 @@ async function handleRestartCallback(
 		// Execute restart
 		const { executeRestart } = await import("./commands");
 		await executeRestart(ctx, ctx.chat?.id);
+		return;
+	}
+
+	// Handle quick action buttons after restart
+	if (action === "start") {
+		await ctx.answerCallbackQuery({ text: "執行 /start" });
+		const { handleStart } = await import("./commands");
+		await handleStart(ctx);
+		return;
+	}
+
+	if (action === "new") {
+		await ctx.answerCallbackQuery({ text: "執行 /new" });
+		const { handleNew } = await import("./commands");
+		await handleNew(ctx);
+		return;
+	}
+
+	if (action === "status") {
+		await ctx.answerCallbackQuery({ text: "執行 /status" });
+		const { handleStatus } = await import("./commands");
+		await handleStatus(ctx);
 		return;
 	}
 

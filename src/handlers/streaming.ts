@@ -16,7 +16,7 @@ import {
 	TOKEN_WARNING_THRESHOLD,
 } from "../config";
 import { convertMarkdownToHtml, escapeHtml } from "../formatting";
-import { safeTelegramCall } from "../telegram-api";
+import { safeTelegramCall, withRetry } from "../telegram-api";
 import { sessionManager } from "../session";
 import type { StatusCallback } from "../types";
 
@@ -141,9 +141,11 @@ export function createStatusCallback(
 				const preview =
 					content.length > 500 ? `${content.slice(0, 500)}...` : content;
 				const escaped = escapeHtml(preview);
-				const thinkingMsg = await ctx.reply(`🧠 <i>${escaped}</i>`, {
-					parse_mode: "HTML",
-				});
+				const thinkingMsg = await withRetry(() =>
+					ctx.reply(`🧠 <i>${escaped}</i>`, {
+						parse_mode: "HTML",
+					}),
+				);
 				state.toolMessages.push(thinkingMsg);
 			} else if (statusType === "tool") {
 				// Stop previous tool spinner if any
@@ -156,7 +158,9 @@ export function createStatusCallback(
 
 				// Send initial tool message with spinner
 				const initialContent = `${content} ${SPINNER_FRAMES[0]}`;
-				const toolMsg = await ctx.reply(initialContent, { parse_mode: "HTML" });
+				const toolMsg = await withRetry(() =>
+					ctx.reply(initialContent, { parse_mode: "HTML" }),
+				);
 				state.toolMessages.push(toolMsg);
 				state.currentToolMsg = toolMsg;
 
@@ -194,7 +198,9 @@ export function createStatusCallback(
 							: content;
 					const formatted = convertMarkdownToHtml(display);
 					try {
-						const msg = await ctx.reply(formatted, { parse_mode: "HTML" });
+						const msg = await withRetry(() =>
+							ctx.reply(formatted, { parse_mode: "HTML" }),
+						);
 						state.textMessages.set(segmentId, msg);
 						state.lastContent.set(segmentId, formatted);
 					} catch (htmlError) {
@@ -208,16 +214,17 @@ export function createStatusCallback(
 								"HTML parse rejected by Telegram, using plain text:",
 								htmlError.description,
 							);
-							const msg = await ctx.reply(display);
+							const msg = await withRetry(() => ctx.reply(display));
 							state.textMessages.set(segmentId, msg);
 							state.lastContent.set(segmentId, display);
 						} else {
-							// Network error or other issue - message may have been sent
-							// Don't retry to avoid sending duplicate messages
+							// Network error or other issue - log and continue
+							// withRetry already attempted retries, so this is a persistent failure
 							console.error(
-								"Failed to send segment message (not retrying to avoid duplicates):",
+								"Failed to send segment message after retries:",
 								htmlError,
 							);
+							// Continue execution - don't crash the bot
 						}
 					}
 					state.lastEditTimes.set(segmentId, now);
@@ -284,7 +291,7 @@ export function createStatusCallback(
 						for (let i = 0; i < formatted.length; i += TELEGRAM_SAFE_LIMIT) {
 							const chunk = formatted.slice(i, i + TELEGRAM_SAFE_LIMIT);
 							try {
-								await ctx.reply(chunk, { parse_mode: "HTML" });
+								await withRetry(() => ctx.reply(chunk, { parse_mode: "HTML" }));
 							} catch (htmlError) {
 								// Only retry on confirmed 400 parse rejection to avoid duplicate chunks
 								if (
@@ -295,12 +302,13 @@ export function createStatusCallback(
 										"HTML chunk rejected, using plain text:",
 										htmlError.description,
 									);
-									await ctx.reply(chunk);
+									await withRetry(() => ctx.reply(chunk));
 								} else {
 									console.error(
-										"Failed to send chunk (not retrying to avoid duplicates):",
+										"Failed to send chunk after retries:",
 										htmlError,
 									);
+									// Continue with next chunk - don't crash
 								}
 							}
 						}
@@ -311,17 +319,19 @@ export function createStatusCallback(
 				const keyboard = new InlineKeyboard()
 					.text("✋ 中斷", "timeout:abort")
 					.text("▶️ 繼續", "timeout:continue");
-				const timeoutMsg = await ctx.reply(content, {
-					reply_markup: keyboard,
-				});
+				const timeoutMsg = await withRetry(() =>
+					ctx.reply(content, {
+						reply_markup: keyboard,
+					}),
+				);
 				state.toolMessages.push(timeoutMsg); // Will be deleted when done
 			} else if (statusType === "queued") {
 				// User's query was queued - show position
-				const queueMsg = await ctx.reply(`⏳ ${content}`);
+				const queueMsg = await withRetry(() => ctx.reply(`⏳ ${content}`));
 				state.toolMessages.push(queueMsg);
 			} else if (statusType === "queue_start") {
 				// Queued query is now starting
-				const startMsg = await ctx.reply(`🚀 ${content}`);
+				const startMsg = await withRetry(() => ctx.reply(`🚀 ${content}`));
 				state.toolMessages.push(startMsg);
 			} else if (statusType === "done") {
 				// Stop any running tool spinner
@@ -369,10 +379,12 @@ export function createStatusCallback(
 						.text("Commit", "action:commit")
 						.text("Yes", "action:yes")
 						.text("Handoff", "action:handoff");
-					await ctx.reply(doneMessage, {
-						reply_markup: actionKeyboard,
-						message_effect_id: MESSAGE_EFFECTS.CONFETTI,
-					});
+					await withRetry(() =>
+						ctx.reply(doneMessage, {
+							reply_markup: actionKeyboard,
+							message_effect_id: MESSAGE_EFFECTS.CONFETTI,
+						}),
+					);
 				}
 			}
 		} catch (error) {

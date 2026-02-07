@@ -1321,11 +1321,12 @@ const TEXT_EXTENSIONS = [
 async function sendFile(
 	ctx: Context,
 	filePath: string,
+	workingDir: string,
 ): Promise<string | null> {
 	const { readFileSync } = await import("node:fs");
 
 	// Resolve relative paths from current working directory
-	const resolvedPath = resolvePath(filePath, session.workingDir);
+	const resolvedPath = resolvePath(filePath, workingDir);
 
 	// Validate path exists
 	if (!existsSync(resolvedPath)) {
@@ -1456,7 +1457,7 @@ export async function handleFile(ctx: Context): Promise<void> {
 		const errors: string[] = [];
 		let sent = 0;
 		for (const filePath of detected) {
-			const error = await sendFile(ctx, filePath);
+			const error = await sendFile(ctx, filePath, session.workingDir);
 			if (error) {
 				errors.push(`${filePath}: ${error}`);
 			} else {
@@ -1482,7 +1483,7 @@ export async function handleFile(ctx: Context): Promise<void> {
 
 	// Explicit path provided
 	const inputPath = (match[1] ?? "").trim();
-	const error = await sendFile(ctx, inputPath);
+	const error = await sendFile(ctx, inputPath, session.workingDir);
 	if (error) {
 		await ctx.reply(`❌ ${error}`, {
 			parse_mode: "HTML",
@@ -1578,12 +1579,16 @@ async function handleListFilesByExtensions(
 	extensions: string[],
 ): Promise<void> {
 	const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
 
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.reply("Unauthorized.");
 		return;
 	}
 
+	if (!chatId) return;
+
+	const session = sessionManager.getSession(chatId);
 	const rootDir = session.workingDir;
 	if (!isPathAllowed(rootDir)) {
 		await ctx.reply(`❌ Access denied: <code>${escapeHtml(rootDir)}</code>`, {

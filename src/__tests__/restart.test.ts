@@ -190,15 +190,15 @@ describe("/restart command", () => {
 			const logFile = "/tmp/claude-telegram-bot.log";
 
 			const message =
-				`✅ <b>Bot Restarted</b>\n\n` +
-				`PID: <code>${pid}</code>\n` +
-				`Log: <code>${logFile}</code>\n\n` +
-				`View logs:\n<code>tail -f ${logFile}</code>\n\n` +
-				`Stop bot:\n<code>kill ${pid}</code>`;
+				`✅ <b>Bot 重啟成功！</b>\n\n` +
+				`🔢 程序編號：<code>${pid}</code>\n` +
+				`📋 日誌位置：<code>${logFile}</code>\n\n` +
+				`<b>查看即時日誌：</b>\n<code>tail -f ${logFile}</code>\n\n` +
+				`<b>停止 Bot：</b>\n<code>kill ${pid}</code>`;
 
-			expect(message).toContain("Bot Restarted");
-			expect(message).toContain(`PID: <code>${pid}</code>`);
-			expect(message).toContain(`Log: <code>${logFile}</code>`);
+			expect(message).toContain("Bot 重啟成功");
+			expect(message).toContain(`程序編號：<code>${pid}</code>`);
+			expect(message).toContain(`日誌位置：<code>${logFile}</code>`);
 			expect(message).toContain(`tail -f ${logFile}`);
 			expect(message).toContain(`kill ${pid}`);
 		});

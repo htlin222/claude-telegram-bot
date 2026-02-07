@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { run, sequentialize } from "@grammyjs/runner";
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import {
 	ALLOWED_USERS,
 	PID_LOCK_FILE,
@@ -202,15 +202,21 @@ if (existsSync(RESTART_FILE)) {
 			const pid = process.pid;
 			const logFile = data.log_file || "/tmp/claude-telegram-bot.log";
 
+			// Create inline keyboard with quick action buttons
+			const keyboard = new InlineKeyboard()
+				.text("🏠 Start", "restart:start")
+				.text("🆕 New", "restart:new")
+				.text("📊 Status", "restart:status");
+
 			await bot.api.editMessageText(
 				data.chat_id,
 				data.message_id,
-				`✅ <b>Bot Restarted</b>\n\n` +
-					`PID: <code>${pid}</code>\n` +
-					`Log: <code>${logFile}</code>\n\n` +
-					`View logs:\n<code>tail -f ${logFile}</code>\n\n` +
-					`Stop bot:\n<code>kill ${pid}</code>`,
-				{ parse_mode: "HTML" },
+				`✅ <b>Bot 重啟成功！</b>\n\n` +
+					`🔢 程序編號：<code>${pid}</code>\n` +
+					`📋 日誌位置：<code>${logFile}</code>\n\n` +
+					`<b>查看即時日誌：</b>\n<code>tail -f ${logFile}</code>\n\n` +
+					`<b>停止 Bot：</b>\n<code>kill ${pid}</code>`,
+				{ parse_mode: "HTML", reply_markup: keyboard },
 			);
 		}
 		safeUnlink(RESTART_FILE);
