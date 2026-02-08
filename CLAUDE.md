@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ Skills Location
+
+**IMPORTANT**: When adding skills to this project, always use the **local** `.claude/skills/` directory in the project root:
+
+```bash
+# Correct - Project-local skills
+.claude/skills/my-skill.md
+
+# Wrong - Global skills (DO NOT USE for this project)
+~/.claude/skills/my-skill.md
+```
+
+**Why local?** This project is a Telegram bot that can be deployed to different environments. Skills should be version-controlled with the code and shared across all deployments.
+
 ## Commands
 
 ```bash
@@ -68,6 +82,8 @@ MCP servers defined in `mcp-config.ts`.
 - `/tmp/claude-telegram-audit.log` - Audit log
 
 ## Patterns
+
+**Adding a skill**: Create in `.claude/skills/skill-name.md` (project root, not global). Skills should be version-controlled with the codebase.
 
 **Adding a command**: Create handler in `commands.ts`, register in `index.ts` with `bot.command("name", handler)`
 
