@@ -116,6 +116,7 @@ ctb              # 工作目錄 = ~/my-project
 
 - `/cd` `/worktree` `/branch` `/diff` `/file` `/undo` `/bookmarks`
 - 列檔：`/image` `/pdf` `/docx` `/html`
+- **自動傳檔**：當 Claude 提到檔案後，只要說「把檔案給我看」或 "send me the file"，bot 就會自動偵測並傳送檔案！
 
 ### Shell
 

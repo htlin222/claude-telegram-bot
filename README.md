@@ -118,6 +118,7 @@ ctb              # Working dir = ~/my-project
 
 - `/cd` `/worktree` `/branch` `/diff` `/file` `/undo` `/bookmarks`
 - File listing: `/image` `/pdf` `/docx` `/html`
+- **Auto file send**: Just say "把檔案給我看" or "send me the file" after Claude mentions files, and the bot will automatically detect and send them!
 
 ### Shell
 

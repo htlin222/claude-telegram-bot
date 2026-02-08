@@ -137,6 +137,7 @@ export const convertMarkdownForTelegram = convertMarkdownToHtml;
  * Detect file paths in text that could be sent as documents.
  * Returns array of { path, display } objects.
  * If workingDir is provided, relative paths are resolved and checked for existence.
+ * Supports both plain text and HTML formatted responses.
  */
 export function detectFilePaths(
 	text: string,
@@ -145,18 +146,22 @@ export function detectFilePaths(
 	const paths: Array<{ path: string; display: string }> = [];
 	const seen = new Set<string>();
 
-	// Match paths in backticks, after prefixes, or standalone absolute paths
+	// Match paths in various formats
 	const patterns = [
+		// HTML code tags: <code>/path/to/file.ext</code> or <code>file.ext</code>
+		/<code>([a-zA-Z0-9_./+-]+\.[a-zA-Z0-9]+)<\/code>/gi,
 		// Absolute paths in backticks: `/path/to/file.ext`
 		/`(\/[^\s`]+\.[a-zA-Z0-9]+)`/g,
 		// Relative paths in backticks with extension: `name.txt`, `path/to/file.ext`
 		/`([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\.[a-zA-Z0-9]+)`/g,
 		// Paths after common prefixes (absolute)
-		/(?:file|path|saved|created|wrote|output|generated):\s*(\/[^\s,)]+\.[a-zA-Z0-9]+)/gi,
+		/(?:file|path|saved|created|wrote|output|generated|reading|writing|editing):\s*(\/[^\s,)<]+\.[a-zA-Z0-9]+)/gi,
 		// Paths after common prefixes (relative)
-		/(?:file|path|saved|created|wrote|output|generated):\s*([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\.[a-zA-Z0-9]+)/gi,
-		// Standalone absolute paths with extensions
-		/(?:^|\s)(\/(?:Users|home|tmp|var|etc|opt)[^\s,)]+\.[a-zA-Z0-9]+)/gm,
+		/(?:file|path|saved|created|wrote|output|generated|reading|writing|editing):\s*([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\.[a-zA-Z0-9]+)/gi,
+		// Standalone absolute paths with extensions (common directories)
+		/(?:^|\s)(\/(?:Users|home|tmp|var|etc|opt|Applications)[^\s,)<]+\.[a-zA-Z0-9]+)/gm,
+		// Relative paths that look like files (e.g., src/index.ts, README.md)
+		/(?:^|\s)([a-zA-Z0-9_-]+\/[a-zA-Z0-9_./+-]+\.[a-zA-Z0-9]+)(?:\s|$|<|,|\))/gm,
 	];
 
 	for (const pattern of patterns) {
@@ -164,6 +169,13 @@ export function detectFilePaths(
 		for (const match of matches) {
 			let filePath = match[1];
 			if (!filePath) continue;
+
+			// Clean up HTML entities if present
+			filePath = filePath
+				.replace(/&lt;/g, "<")
+				.replace(/&gt;/g, ">")
+				.replace(/&amp;/g, "&")
+				.replace(/&quot;/g, '"');
 
 			// Resolve relative paths if workingDir is provided
 			if (!filePath.startsWith("/") && workingDir) {
@@ -185,6 +197,60 @@ export function detectFilePaths(
 	}
 
 	return paths;
+}
+
+/**
+ * Detect if user is requesting to view/download files.
+ *
+ * Patterns matched (case-insensitive, supports Chinese and English):
+ * - "把檔案給我看"
+ * - "send me the file"
+ * - "show me the file"
+ * - "download the file"
+ * - "give me the file"
+ * - "can i see the file"
+ * - "let me see the file"
+ * - etc.
+ */
+export function detectFileRequest(text: string): boolean {
+	const lowerText = text.toLowerCase().trim();
+
+	// Chinese patterns
+	const chinesePatterns = [
+		/把.*檔案.*給我/,
+		/檔案.*給我看/,
+		/給我.*檔案/,
+		/傳.*檔案/,
+		/下載.*檔案/,
+		/看.*檔案/,
+		/檔案.*看/,
+	];
+
+	// English patterns
+	const englishPatterns = [
+		/\b(send|give|show)\s+(me\s+)?(the\s+)?files?\b/,
+		/\b(download|get)\s+(the\s+)?files?\b/,
+		/\bcan\s+i\s+(see|have|get)\s+(the\s+)?files?\b/,
+		/\blet\s+me\s+(see|have)\s+(the\s+)?files?\b/,
+		/\bi\s+(want|need)\s+(the\s+)?files?\b/,
+		/\bfiles?\s+(please|pls)\b/,
+	];
+
+	// Check Chinese patterns (case-sensitive for Chinese)
+	for (const pattern of chinesePatterns) {
+		if (pattern.test(text)) {
+			return true;
+		}
+	}
+
+	// Check English patterns (case-insensitive)
+	for (const pattern of englishPatterns) {
+		if (pattern.test(lowerText)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 // ============== Tool Status Formatting ==============

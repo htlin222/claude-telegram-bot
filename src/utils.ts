@@ -22,8 +22,76 @@ import type { AuditEvent } from "./types";
 // ============== OpenAI Client ==============
 
 let openaiClient: OpenAI | null = null;
+let openaiApiValid: boolean | null = null; // null = untested, true = valid, false = invalid
+
 if (OPENAI_API_KEY && TRANSCRIPTION_AVAILABLE) {
 	openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY });
+}
+
+/**
+ * Validate OpenAI API key by making a test request.
+ * Returns true if valid, false otherwise.
+ * Caches result to avoid repeated validation.
+ */
+export async function validateOpenAIApi(): Promise<boolean> {
+	// Return cached result if available
+	if (openaiApiValid !== null) {
+		return openaiApiValid;
+	}
+
+	if (!openaiClient) {
+		openaiApiValid = false;
+		return false;
+	}
+
+	try {
+		// Make a lightweight API call to validate the key
+		// Using models.list() is a simple way to check API access
+		await openaiClient.models.list();
+		openaiApiValid = true;
+		console.log("✓ OpenAI API key validated successfully");
+		return true;
+	} catch (error) {
+		openaiApiValid = false;
+		const errorMsg = String(error);
+
+		if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+			console.error("✗ OpenAI API key is invalid or unauthorized");
+		} else if (errorMsg.includes("429") || errorMsg.includes("rate limit")) {
+			console.error("✗ OpenAI API rate limit exceeded");
+		} else if (
+			errorMsg.includes("network") ||
+			errorMsg.includes("ECONNREFUSED")
+		) {
+			console.error("✗ Cannot reach OpenAI API (network issue)");
+		} else {
+			console.error("✗ OpenAI API validation failed:", errorMsg);
+		}
+
+		return false;
+	}
+}
+
+/**
+ * Get current OpenAI API status without triggering validation.
+ * Returns: "unchecked" | "valid" | "invalid" | "unavailable"
+ */
+export function getOpenAIApiStatus(): string {
+	if (!openaiClient) {
+		return "unavailable";
+	}
+	if (openaiApiValid === null) {
+		return "unchecked";
+	}
+	return openaiApiValid ? "valid" : "invalid";
+}
+
+/**
+ * Force reset of API validation cache (useful after key rotation).
+ */
+export function resetOpenAIApiValidation(): void {
+	openaiApiValid = null;
+	console.log("OpenAI API validation cache cleared");
 }
 
 // ============== Audit Logging ==============
@@ -212,16 +280,71 @@ export async function transcribeVoice(
 		return null;
 	}
 
+	// Validate API before attempting transcription
+	const isValid = await validateOpenAIApi();
+	if (!isValid) {
+		console.error("OpenAI API validation failed, cannot transcribe");
+		return null;
+	}
+
 	try {
 		const file = Bun.file(filePath);
+
+		// Check if file exists and has content
+		if (!(await file.exists())) {
+			console.error("Voice file does not exist:", filePath);
+			return null;
+		}
+
+		const fileSize = file.size;
+		if (fileSize === 0) {
+			console.error("Voice file is empty:", filePath);
+			return null;
+		}
+
+		// OpenAI has a 25MB limit for audio files
+		const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB in bytes
+		if (fileSize > MAX_FILE_SIZE) {
+			console.error(
+				`Voice file too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB (max 25MB)`,
+			);
+			return null;
+		}
+
+		console.log(
+			`Transcribing voice file (${(fileSize / 1024).toFixed(1)}KB)...`,
+		);
+
 		const transcript = await openaiClient.audio.transcriptions.create({
 			model: "gpt-4o-transcribe",
 			file: file,
 			prompt: TRANSCRIPTION_PROMPT,
 		});
+
+		if (!transcript.text || transcript.text.trim().length === 0) {
+			console.warn("Transcription returned empty text");
+			return null;
+		}
+
+		console.log(
+			`Transcription successful (${transcript.text.length} characters)`,
+		);
 		return transcript.text;
 	} catch (error) {
-		console.error("Transcription failed:", error);
+		const errorMsg = String(error);
+		console.error("Transcription failed:", errorMsg);
+
+		// Invalidate API cache if we get auth errors
+		if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+			openaiApiValid = false;
+			console.error("OpenAI API key appears to be invalid");
+		} else if (errorMsg.includes("429")) {
+			console.error("OpenAI API rate limit exceeded");
+		} else if (errorMsg.includes("insufficient_quota")) {
+			openaiApiValid = false;
+			console.error("OpenAI API quota exceeded");
+		}
+
 		return null;
 	}
 }

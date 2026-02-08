@@ -87,7 +87,24 @@ export async function handleVoice(ctx: Context): Promise<void> {
 		const transcript = await transcribeVoice(voicePath);
 		if (!transcript) {
 			await ctx.api.deleteMessage(chatId, statusMsg.message_id);
-			await ctx.reply("❌ Transcription failed.", {
+
+			// Try to provide helpful error message
+			let errorMsg = "❌ Transcription failed.";
+			try {
+				const fileSize = (await Bun.file(voicePath).size) / 1024;
+				if (fileSize > 25 * 1024) {
+					errorMsg += " File too large (max 25MB).";
+				} else if (fileSize === 0) {
+					errorMsg += " Voice file is empty.";
+				} else {
+					errorMsg +=
+						" Check if OpenAI API key is valid and has sufficient quota.";
+				}
+			} catch {
+				// Ignore file check errors
+			}
+
+			await ctx.reply(errorMsg, {
 				message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN,
 			});
 			stopProcessing();
