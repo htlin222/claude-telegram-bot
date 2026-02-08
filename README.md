@@ -184,12 +184,12 @@ The bot includes a high-performance file indexing system powered by SQLite:
 
 ### Performance
 
-| Operation | Before (No Index) | After (With Index) |
-|-----------|------------------|-------------------|
-| File search | ~500-2000ms | <10ms |
-| New file | Manual scan | Auto-indexed (<100ms) |
-| File change | Manual scan | Auto-updated (<50ms) |
-| File delete | Manual scan | Auto-removed (<10ms) |
+| Operation   | Before (No Index) | After (With Index)    |
+| ----------- | ----------------- | --------------------- |
+| File search | ~500-2000ms       | <10ms                 |
+| New file    | Manual scan       | Auto-indexed (<100ms) |
+| File change | Manual scan       | Auto-updated (<50ms)  |
+| File delete | Manual scan       | Auto-removed (<10ms)  |
 
 ## Best Practices
 

@@ -132,12 +132,6 @@ export async function handleCallback(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2l. Handle index callbacks
-	if (callbackData.startsWith("index:")) {
-		await handleIndexCallback(ctx, userId, username, callbackData);
-		return;
-	}
-
 	// 3. Parse callback data: askuser:{request_id}:{option_index}
 	if (!callbackData.startsWith("askuser:")) {
 		await ctx.answerCallbackQuery();
@@ -1396,43 +1390,6 @@ async function handleRestartCallback(
 		await ctx.answerCallbackQuery({ text: "執行 /status" });
 		const { handleStatus } = await import("./commands");
 		await handleStatus(ctx);
-		return;
-	}
-
-	await ctx.answerCallbackQuery({ text: "Unknown action" });
-}
-
-/**
- * Handle index-related callbacks.
- */
-async function handleIndexCallback(
-	ctx: Context,
-	userId: number,
-	username: string,
-	callbackData: string,
-): Promise<void> {
-	const action = callbackData.split(":")[1];
-
-	if (action === "rebuild") {
-		await ctx.answerCallbackQuery({ text: "開始重建索引..." });
-
-		// Import dynamically to avoid circular dependency
-		const { handleRebuildIndex } = await import("./commands");
-		await handleRebuildIndex(ctx);
-		return;
-	}
-
-	if (action === "search") {
-		await ctx.answerCallbackQuery({ text: "使用 /search <檔名> 來搜尋檔案" });
-		await ctx.reply(
-			"🔍 <b>檔案搜尋</b>\n\n" +
-				"使用 <code>/search &lt;檔名或路徑&gt;</code> 來搜尋檔案\n\n" +
-				"例如：\n" +
-				"<code>/search config.ts</code>\n" +
-				"<code>/search handlers/</code>\n" +
-				"<code>/search .env</code>",
-			{ parse_mode: "HTML" },
-		);
 		return;
 	}
 

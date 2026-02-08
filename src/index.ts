@@ -8,9 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { run } from "@grammyjs/runner";
 import { Bot, InlineKeyboard } from "grammy";
 import {
-	ALLOWED_PATHS,
 	ALLOWED_USERS,
-	FILE_INDEX_DB,
 	RESTART_FILE,
 	TELEGRAM_TOKEN,
 	WORKING_DIR,
@@ -29,7 +27,6 @@ import {
 	handleHandoff,
 	handleHtml,
 	handleImage,
-	handleIndexStats,
 	handleMerge,
 	handleModel,
 	handleNew,
@@ -38,11 +35,9 @@ import {
 	handlePhoto,
 	handlePlan,
 	handleProvider,
-	handleRebuildIndex,
 	handleRestart,
 	handleResume,
 	handleRetry,
-	handleSearch,
 	handleSkill,
 	handleStart,
 	handleStatus,
@@ -55,33 +50,9 @@ import {
 } from "./handlers";
 import { session } from "./session";
 import { safeUnlink } from "./utils/temp-cleanup";
-import { FileIndexer } from "./file-indexer";
 
 // Create bot instance
 const bot = new Bot(TELEGRAM_TOKEN);
-
-// ============== File Indexer ==============
-// Initialize file indexer for fast file lookups
-const fileIndexer = new FileIndexer(FILE_INDEX_DB);
-
-// Build index in background (non-blocking)
-(async () => {
-	console.log("🔍 Building file index in background...");
-	const startTime = Date.now();
-	try {
-		await fileIndexer.rebuildIndex(ALLOWED_PATHS);
-		const elapsed = Date.now() - startTime;
-		console.log(`✅ File index ready (${elapsed}ms)`);
-
-		// Start file watcher for incremental updates
-		fileIndexer.startWatching(ALLOWED_PATHS);
-	} catch (error) {
-		console.error("❌ Failed to build file index:", error);
-	}
-})();
-
-// Export for handlers
-export { fileIndexer };
 
 // ============== Update Deduplication ==============
 // Prevents processing the same Telegram update twice (e.g., during bot restarts,
@@ -142,9 +113,6 @@ bot.command("bookmarks", handleBookmarks);
 bot.command("pending", handlePending);
 bot.command("q", handlePending); // Alias for queue
 bot.command("diff", handleDiff);
-bot.command("rebuild_index", handleRebuildIndex);
-bot.command("index_stats", handleIndexStats);
-bot.command("search", handleSearch);
 
 // ============== Message Handlers ==============
 
@@ -177,14 +145,6 @@ console.log("Claude Telegram Bot - TypeScript Edition");
 console.log("=".repeat(50));
 console.log(`Working directory: ${WORKING_DIR}`);
 console.log(`Allowed users: ${ALLOWED_USERS.length}`);
-
-// Validate OpenAI API if configured
-if (process.env.OPENAI_API_KEY) {
-	const { validateOpenAIApi } = await import("./utils");
-	console.log("Checking OpenAI API...");
-	await validateOpenAIApi();
-}
-
 console.log("Starting bot...");
 
 // Get bot info first
@@ -254,10 +214,6 @@ async function gracefulShutdown(signal: string): Promise<void> {
 		// Flush session data
 		session.flushSession();
 		console.log("Session flushed");
-
-		// Close file indexer database and watcher
-		await fileIndexer.close();
-		console.log("File indexer closed");
 
 		// Clear the timeout and exit cleanly
 		clearTimeout(forceExit);

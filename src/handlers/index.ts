@@ -15,7 +15,6 @@ export {
 	handleHandoff,
 	handleHtml,
 	handleImage,
-	handleIndexStats,
 	handleMerge,
 	handleModel,
 	handleNew,
@@ -23,11 +22,9 @@ export {
 	handlePdf,
 	handlePlan,
 	handleProvider,
-	handleRebuildIndex,
 	handleRestart,
 	handleResume,
 	handleRetry,
-	handleSearch,
 	handleSkill,
 	handleStart,
 	handleStatus,
@@ -37,7 +34,6 @@ export {
 	handleWorktree,
 } from "./commands";
 export { handleDocument } from "./document";
-export { handleAutoFileSend, sendFile } from "./file-sender";
 export { handlePhoto } from "./photo";
 export { createStatusCallback, StreamingState } from "./streaming";
 export { handleText } from "./text";

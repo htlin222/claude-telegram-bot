@@ -34,15 +34,13 @@ Telegram message → Handler → Auth check → Rate limit → Claude session �
 ### Handlers (`src/handlers/`)
 
 Each message type has a dedicated async handler:
-
 - **`commands.ts`** - `/start`, `/new`, `/stop`, `/status`, `/resume`, `/restart`
-- **`text.ts`** - Text messages with intent filtering and auto file send detection
+- **`text.ts`** - Text messages with intent filtering
 - **`voice.ts`** - Voice→text via OpenAI, then same flow as text
 - **`photo.ts`** - Image analysis with media group buffering (1s timeout for albums)
 - **`document.ts`** - PDF extraction (pdftotext CLI) and text file processing
 - **`callback.ts`** - Inline keyboard button handling for ask_user MCP
 - **`streaming.ts`** - Shared `StreamingState` and status callback factory
-- **`file-sender.ts`** - Shared file sending utilities with auto-detection of file requests
 
 ### Security Layers
 
@@ -56,7 +54,6 @@ Each message type has a dedicated async handler:
 ### Configuration
 
 All config via `.env` (copy from `.env.example`). Key variables:
-
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` (required)
 - `CLAUDE_WORKING_DIR` - Working directory for Claude
 - `ALLOWED_PATHS` - Directories Claude can access
@@ -78,8 +75,6 @@ MCP servers defined in `mcp-config.ts`.
 
 **Streaming pattern**: All handlers use `createStatusCallback()` from `streaming.ts` and `session.sendMessageStreaming()` for live updates.
 
-**Auto file send**: The text handler automatically detects file requests (e.g., "把檔案給我看", "send me the file") using `detectFileRequest()` from `formatting.ts` and sends files from the last bot response. Uses `handleAutoFileSend()` from `file-sender.ts`.
-
 **Type checking**: Run `bun run typecheck` periodically while editing TypeScript files. Fix any type errors before committing.
 
 **After code changes**: Restart the bot so changes can be tested. Use `launchctl kickstart -k gui/$(id -u)/com.claude-telegram-ts` if running as a service, or `bun run start` for manual runs.
@@ -99,7 +94,6 @@ brew install poppler  # Provides pdftotext
 ### PATH Requirements
 
 When running as a standalone binary (especially from a macOS app), the PATH may not include Homebrew. The launcher must ensure PATH includes:
-
 - `/opt/homebrew/bin` (Apple Silicon Homebrew)
 - `/usr/local/bin` (Intel Homebrew)
 

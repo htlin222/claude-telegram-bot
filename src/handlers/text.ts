@@ -142,14 +142,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 2. Auto file send: Check if user is requesting to view/download files
-	const { handleAutoFileSend } = await import("./file-sender");
-	const fileRequestHandled = await handleAutoFileSend(ctx, message, session);
-	if (fileRequestHandled) {
-		return;
-	}
-
-	// 3. Interrupt prefix: !! interrupts current query and sends message to Claude
+	// 2. Interrupt prefix: !! interrupts current query and sends message to Claude
 	if (message.startsWith("!!")) {
 		const interruptMsg = message.slice(2).trim();
 		if (interruptMsg) {
@@ -166,7 +159,7 @@ export async function handleText(ctx: Context): Promise<void> {
 			return; // Empty message after !!
 		}
 	}
-	// 4. Shell command shortcut: !command requires confirmation
+	// 3. Shell command shortcut: !command requires confirmation
 	else if (message.startsWith("!")) {
 		const shellCmd = message.slice(1).trim();
 		if (shellCmd) {
@@ -199,7 +192,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		}
 	}
 
-	// 5. Rate limit check
+	// 3. Rate limit check
 	const [allowed, retryAfter] = rateLimiter.check(userId);
 	if (!allowed) {
 		await auditLogRateLimit(userId, username, retryAfter!);
@@ -209,7 +202,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 6. If session is busy, queue the message instead of executing
+	// 4. If session is busy, queue the message instead of executing
 	if (session.isRunning) {
 		const msgId = session.addPendingMessage(message);
 		const preview =
@@ -222,20 +215,20 @@ export async function handleText(ctx: Context): Promise<void> {
 		return;
 	}
 
-	// 7. Store message for retry
+	// 5. Store message for retry
 	session.lastMessage = message;
 
-	// 8. Mark processing started
+	// 6. Mark processing started
 	const stopProcessing = session.startProcessing();
 
-	// 9. Start typing indicator
+	// 7. Start typing indicator
 	const typing = startTypingIndicator(ctx);
 
-	// 10. Create streaming state and callback
+	// 7. Create streaming state and callback
 	let state = new StreamingState();
 	let statusCallback = createStatusCallback(ctx, state, chatId);
 
-	// 11. Send to Claude with retry logic for crashes
+	// 8. Send to Claude with retry logic for crashes
 	const MAX_RETRIES = 1;
 
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -249,7 +242,7 @@ export async function handleText(ctx: Context): Promise<void> {
 				ctx,
 			);
 
-			// 12. Audit log
+			// 9. Audit log
 			await auditLog(userId, username, "TEXT", message, response);
 			break; // Success - exit retry loop
 		} catch (error) {
@@ -312,7 +305,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		}
 	}
 
-	// 13. Auto-process pending messages to maintain sequence order.
+	// 10. Auto-process pending messages to maintain sequence order.
 	// Messages get queued (via addPendingMessage) when a callback-triggered query
 	// is running (callbacks bypass sequentialization). Without auto-processing,
 	// the next text message would skip ahead of queued ones, causing sequence mismatch.
@@ -357,7 +350,7 @@ export async function handleText(ctx: Context): Promise<void> {
 		}
 	}
 
-	// 14. Cleanup
+	// 11. Cleanup
 	stopProcessing();
 	typing.stop();
 }

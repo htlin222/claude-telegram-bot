@@ -27,7 +27,6 @@ import {
 	getWorkingTreeStatus,
 	listBranches,
 } from "../worktree";
-import { sendFile } from "./file-sender";
 
 const CALLBACK_DATA_LIMIT = 64;
 const BRANCH_LIST_LIMIT = Number.parseInt(
@@ -109,9 +108,6 @@ Working directory: <code>${workDir}</code>
 /undo - Revert file changes
 /skill - Invoke Claude Code skill
 /bookmarks - Directory bookmarks
-/search - Search files by name/path
-/rebuild_index - Rebuild file index
-/index_stats - Show index statistics
 /restart - Restart the bot
 
 <b>Tips:</b>
@@ -289,23 +285,6 @@ export async function handleStatus(ctx: Context): Promise<void> {
 
 	// Working directory
 	lines.push(`\n📁 Working dir: <code>${session.workingDir}</code>`);
-
-	// OpenAI API status (for voice transcription)
-	const { getOpenAIApiStatus } = await import("../utils");
-	const apiStatus = getOpenAIApiStatus();
-	const statusEmoji = {
-		valid: "✅",
-		invalid: "❌",
-		unchecked: "⚪",
-		unavailable: "🔇",
-	}[apiStatus];
-	const statusText = {
-		valid: "Valid",
-		invalid: "Invalid",
-		unchecked: "Not checked",
-		unavailable: "Not configured",
-	}[apiStatus];
-	lines.push(`\n🎤 Voice transcription: ${statusEmoji} ${statusText}`);
 
 	await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
 }
@@ -1278,6 +1257,143 @@ export async function handleCd(ctx: Context): Promise<void> {
 	});
 }
 
+// Text/code file extensions that should be displayed inline
+const TEXT_EXTENSIONS = [
+	".txt",
+	".md",
+	".json",
+	".xml",
+	".yaml",
+	".yml",
+	".toml",
+	".ini",
+	".env",
+	".js",
+	".ts",
+	".jsx",
+	".tsx",
+	".py",
+	".rb",
+	".go",
+	".rs",
+	".java",
+	".c",
+	".cpp",
+	".h",
+	".hpp",
+	".cs",
+	".php",
+	".sh",
+	".bash",
+	".zsh",
+	".fish",
+	".sql",
+	".css",
+	".scss",
+	".sass",
+	".less",
+	".html",
+	".vue",
+	".svelte",
+	".dart",
+	".kt",
+	".swift",
+	".m",
+	".mm",
+	".r",
+	".lua",
+	".pl",
+	".ex",
+	".exs",
+	".clj",
+	".scala",
+	".gradle",
+	".cmake",
+	".make",
+	".dockerfile",
+];
+
+/**
+ * Send a single file to the user. Returns error message or null on success.
+ * For small text/code files, displays content inline with syntax highlighting.
+ * For large or binary files, sends as document download.
+ */
+async function sendFile(
+	ctx: Context,
+	filePath: string,
+	workingDir: string,
+): Promise<string | null> {
+	const { readFileSync } = await import("node:fs");
+
+	// Resolve relative paths from current working directory
+	const resolvedPath = resolvePath(filePath, workingDir);
+
+	// Validate path exists
+	if (!existsSync(resolvedPath)) {
+		return `File not found: ${resolvedPath}`;
+	}
+
+	const stats = statSync(resolvedPath);
+	if (stats.isDirectory()) {
+		return `Cannot send directory: ${resolvedPath}`;
+	}
+
+	// Check if path is allowed
+	if (!isPathAllowed(resolvedPath)) {
+		return `Access denied: ${resolvedPath}`;
+	}
+
+	const filename = resolvedPath.split("/").pop() || "file";
+	const ext = extname(filename).toLowerCase();
+	const isTextFile = TEXT_EXTENSIONS.includes(ext);
+
+	// For small text/code files, display inline with syntax highlighting
+	const INLINE_SIZE_LIMIT = 4096; // Telegram message limit
+	if (isTextFile && stats.size < INLINE_SIZE_LIMIT) {
+		try {
+			const content = readFileSync(resolvedPath, "utf-8");
+
+			// Escape HTML special chars
+			const escaped = content
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+
+			// Truncate if too long for Telegram message
+			const maxLen = 3800; // Leave room for header and formatting
+			const truncated =
+				escaped.length > maxLen
+					? `${escaped.slice(0, maxLen)}...\n\n(truncated, use /file to download full file)`
+					: escaped;
+
+			await ctx.reply(
+				`📄 <b>${escapeHtml(filename)}</b>\n\n<pre><code class="language-${ext.slice(1)}">${truncated}</code></pre>`,
+				{ parse_mode: "HTML" },
+			);
+			return null;
+		} catch (error) {
+			// If inline display fails, fall through to file download
+			console.debug("Failed to display inline, falling back to file:", error);
+		}
+	}
+
+	// Check file size (Telegram limit is 50MB for bots)
+	const MAX_FILE_SIZE = 50 * 1024 * 1024;
+	if (stats.size > MAX_FILE_SIZE) {
+		const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+		return `File too large: ${resolvedPath} (${sizeMB}MB, max 50MB)`;
+	}
+
+	// Send as file download
+	try {
+		await ctx.replyWithDocument(new InputFile(resolvedPath, filename));
+		return null;
+	} catch (error) {
+		const errMsg = error instanceof Error ? error.message : String(error);
+		return `Failed to send: ${errMsg}`;
+	}
+}
+
 /**
  * /file - Send a file to the user.
  * Without arguments: auto-detect file paths from last bot response.
@@ -1666,244 +1782,4 @@ export async function handleDiff(ctx: Context): Promise<void> {
 		parse_mode: "HTML",
 		reply_markup: keyboard,
 	});
-}
-
-/**
- * /rebuild_index - Rebuild file index
- */
-export async function handleRebuildIndex(ctx: Context): Promise<void> {
-	const userId = ctx.from?.id;
-	const chatId = ctx.chat?.id;
-
-	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized.");
-		return;
-	}
-
-	if (!chatId) return;
-
-	// Dynamic import to avoid circular dependency
-	const { fileIndexer } = await import("../index");
-
-	const typingController = startTypingIndicator(ctx);
-
-	try {
-		const startTime = Date.now();
-		await ctx.reply("🔄 重建檔案索引中，請稍候...");
-
-		// Get ALLOWED_PATHS for rebuild
-		const { ALLOWED_PATHS } = await import("../config");
-		await fileIndexer.rebuildIndex(ALLOWED_PATHS);
-
-		const elapsed = Date.now() - startTime;
-		const stats = fileIndexer.getStats();
-
-		await ctx.reply(
-			`✅ <b>索引重建完成！</b>\n\n` +
-				`📁 檔案數量：<b>${stats.totalFiles}</b>\n` +
-				`💾 資料庫大小：${stats.dbSize}\n` +
-				`⏱️ 耗時：${elapsed}ms\n` +
-				`🕐 更新時間：${new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}`,
-			{ parse_mode: "HTML", message_effect_id: MESSAGE_EFFECTS.FIRE },
-		);
-	} catch (error) {
-		console.error("Failed to rebuild index:", error);
-		await ctx.reply(
-			`❌ 索引重建失敗：${error instanceof Error ? error.message : String(error)}`,
-			{ message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN },
-		);
-	} finally {
-		typingController.stop();
-	}
-}
-
-/**
- * /index_stats - Show file index statistics
- */
-export async function handleIndexStats(ctx: Context): Promise<void> {
-	const userId = ctx.from?.id;
-	const chatId = ctx.chat?.id;
-
-	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized.");
-		return;
-	}
-
-	if (!chatId) return;
-
-	// Dynamic import to avoid circular dependency
-	const { fileIndexer } = await import("../index");
-
-	try {
-		const stats = fileIndexer.getStats();
-		const recentFiles = fileIndexer.getRecentFiles(5);
-		const watcherActive = fileIndexer.isWatcherActive();
-
-		let message = `📊 <b>檔案索引統計</b>\n\n`;
-		message += `📁 總檔案數：<b>${stats.totalFiles}</b>\n`;
-		message += `💾 資料庫大小：${stats.dbSize}\n`;
-		message += `🕐 最後更新：${stats.lastUpdate === "Never" ? "尚未建立" : new Date(stats.lastUpdate).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}\n`;
-		message += `👀 檔案監控：${watcherActive ? "✅ 運行中" : "❌ 未啟動"}\n`;
-
-		if (recentFiles.length > 0) {
-			message += `\n<b>最近存取的檔案：</b>\n`;
-			for (const file of recentFiles) {
-				const fileName = file.path.split("/").pop() || file.path;
-				const accessTime = new Date(file.last_accessed).toLocaleString(
-					"zh-TW",
-					{
-						timeZone: "Asia/Taipei",
-						month: "short",
-						day: "numeric",
-						hour: "2-digit",
-						minute: "2-digit",
-					},
-				);
-				message += `• <code>${escapeHtml(fileName)}</code> (${accessTime})\n`;
-			}
-		}
-
-		// Add action buttons
-		const keyboard = new InlineKeyboard()
-			.text("🔄 重建索引", "index:rebuild")
-			.text("🔍 搜尋", "index:search");
-
-		await ctx.reply(message, { parse_mode: "HTML", reply_markup: keyboard });
-	} catch (error) {
-		console.error("Failed to get index stats:", error);
-		await ctx.reply(
-			`❌ 無法取得索引統計：${error instanceof Error ? error.message : String(error)}`,
-			{ message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN },
-		);
-	}
-}
-
-/**
- * /search <query> - Search for files by path pattern
- */
-export async function handleSearch(ctx: Context): Promise<void> {
-	const userId = ctx.from?.id;
-	const chatId = ctx.chat?.id;
-
-	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized.");
-		return;
-	}
-
-	if (!chatId) return;
-
-	// Get search query from command
-	const text = ctx.message?.text || "";
-	const query = text.replace(/^\/search\s+/, "").trim();
-
-	if (!query) {
-		await ctx.reply(
-			"用法：<code>/search &lt;檔名或路徑&gt;</code>\n\n" +
-				"例如：\n" +
-				"<code>/search config.ts</code>\n" +
-				"<code>/search handlers/</code>\n" +
-				"<code>/search .env</code>",
-			{ parse_mode: "HTML" },
-		);
-		return;
-	}
-
-	// Dynamic import to avoid circular dependency
-	const { fileIndexer } = await import("../index");
-
-	try {
-		const startTime = Date.now();
-		const results = fileIndexer.search(query, 20); // Get up to 20 results
-		const elapsed = Date.now() - startTime;
-
-		if (results.length === 0) {
-			await ctx.reply(
-				`🔍 找不到符合 <code>${escapeHtml(query)}</code> 的檔案\n\n` +
-					`💡 提示：\n` +
-					`• 檢查拼字是否正確\n` +
-					`• 嘗試使用部分檔名\n` +
-					`• 使用 /rebuild_index 重建索引`,
-				{ parse_mode: "HTML" },
-			);
-			return;
-		}
-
-		// Mark files as accessed
-		for (const file of results) {
-			fileIndexer.markAccessed(file.path);
-		}
-
-		// Auto-send if only 1 file found
-		if (results.length === 1) {
-			const file = results[0];
-			if (!file) return;
-
-			const fileName = file.path.split("/").pop() || file.path;
-
-			await ctx.reply(
-				`🔍 找到 1 個檔案 (${elapsed}ms)\n\n` +
-					`📄 <code>${escapeHtml(fileName)}</code>\n` +
-					`📥 正在傳送檔案...`,
-				{ parse_mode: "HTML" },
-			);
-
-			// Use sendFile to deliver the file
-			const session = sessionManager.getSession(chatId);
-			await sendFile(ctx, file.path, session.workingDir);
-			return;
-		}
-
-		// Build results message for 2+ files
-		let message = `🔍 找到 <b>${results.length}</b> 個檔案 (${elapsed}ms)\n\n`;
-
-		for (const file of results.slice(0, 15)) {
-			// Show max 15 in message
-			const fileName = file.path.split("/").pop() || file.path;
-			const fileSize = formatFileSize(file.size);
-			message += `📄 <code>${escapeHtml(fileName)}</code> (${fileSize})\n`;
-			message += `   <code>${escapeHtml(file.path)}</code>\n\n`;
-		}
-
-		if (results.length > 15) {
-			message += `<i>... 及其他 ${results.length - 15} 個檔案</i>\n\n`;
-		}
-
-		message += `💡 點擊按鈕下載檔案`;
-
-		// Add keyboard with file download buttons for top 3 results
-		const keyboard = new InlineKeyboard();
-		for (const file of results.slice(0, 3)) {
-			const fileName = file.path.split("/").pop() || file.path;
-			const label =
-				fileName.length > 25 ? `${fileName.slice(0, 22)}...` : fileName;
-
-			// Encode file path for callback
-			const encoded = Buffer.from(file.path).toString("base64");
-			if (`sendfile:${encoded}`.length <= 64) {
-				keyboard.text(`📥 ${label}`, `sendfile:${encoded}`).row();
-			}
-		}
-
-		await ctx.reply(message, {
-			parse_mode: "HTML",
-			reply_markup: results.length <= 3 ? keyboard : undefined,
-		});
-	} catch (error) {
-		console.error("Failed to search files:", error);
-		await ctx.reply(
-			`❌ 搜尋失敗：${error instanceof Error ? error.message : String(error)}`,
-			{ message_effect_id: MESSAGE_EFFECTS.THUMBS_DOWN },
-		);
-	}
-}
-
-/**
- * Helper: Format file size
- */
-function formatFileSize(bytes: number): string {
-	if (bytes === 0) return "0 B";
-	const k = 1024;
-	const sizes = ["B", "KB", "MB", "GB"];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
