@@ -21,10 +21,9 @@ Claude Telegram Bot connects Telegram → Claude Code and streams responses (inc
 - 🧵 Session persistence and `/resume`
 - 📁 Git worktrees, `/diff`, `/undo`, `/file`
 - 🗂️ File listing helpers: `/image`, `/pdf`, `/docx`, `/html`
-- 🔍 **Fast file search** with SQLite indexing and auto-send (50-200x faster)
-- 👀 **Real-time file watcher** for automatic index updates
 - ✏️ Voice transcript confirmation and editing before sending to Claude
 - 🔄 Smart `/restart` with TTY mode detection and confirmation dialog
+- 👥 **Group chat support**: Add bot to groups, require @mention to respond (v1.4.3+)
 - 🛡️ Safety layers: allowlist, rate limits, path checks, command guardrails, audit log
 - 🗂️ Per-chat sessions: each Telegram chat has its own independent Claude session
 
@@ -104,6 +103,43 @@ ctb              # Working dir = ~/my-project
 - This bot uses `@anthropic-ai/claude-agent-sdk`.
 - Prefer **CLI auth**: run `claude` once and sign in. This uses your Claude Code subscription and is typically more cost-effective.
 - Use `ANTHROPIC_API_KEY` only if you cannot use CLI auth (headless/CI environments).
+
+## Group Chat Support
+
+Add the bot to Telegram groups for collaborative debugging! 👥
+
+### How It Works
+
+- **@mention required**: Bot only responds when mentioned with `@bot_username` in groups
+- **Private chats unchanged**: No mention needed in direct messages
+- **Authorization**: Only `TELEGRAM_ALLOWED_USERS` can control the bot
+- **Visibility**: Authorized users' conversations are visible to all group members
+- **Privacy**: Unauthorized users get private notifications (not visible to group)
+
+### Usage Example
+
+```
+Alice (authorized): @mybot what's the current git status?
+Bot: [Shows git status to everyone]
+
+Bob (unauthorized): @mybot help me debug
+Bot: [Sends private message to Bob: "You are not authorized..."]
+
+Alice: Let's fix this bug together
+[No @mention, bot ignores - normal group chat]
+
+Alice: @mybot check the logs
+Bot: [Responds to Alice, everyone sees the response]
+```
+
+### Setup
+
+1. Add bot to group via @BotFather settings
+2. Configure `TELEGRAM_ALLOWED_USERS` with authorized user IDs
+3. Group members @mention the bot to interact
+4. Bot maintains per-chat session (each group has independent context)
+
+**Perfect for pair programming, code reviews, and team debugging!**
 
 ## Commands
 
