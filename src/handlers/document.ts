@@ -478,7 +478,7 @@ export async function handleDocument(ctx: Context): Promise<void> {
 	}
 
 	// 0. Group chat check - bot must be mentioned
-	if (!isBotMentioned(ctx, BOT_USERNAME)) {
+	if (!(await isBotMentioned(ctx, BOT_USERNAME))) {
 		return; // Silently ignore documents without mention in groups
 	}
 

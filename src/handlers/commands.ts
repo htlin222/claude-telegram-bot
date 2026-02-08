@@ -20,7 +20,11 @@ import {
 } from "../config";
 import { isAuthorized, isPathAllowed } from "../security";
 import { sessionManager } from "../session";
-import { handleUnauthorized, isBotMentioned, startTypingIndicator } from "../utils";
+import {
+	handleUnauthorized,
+	isBotMentioned,
+	startTypingIndicator,
+} from "../utils";
 import {
 	getCombinedDiff,
 	getGitDiff,
@@ -43,7 +47,7 @@ async function checkCommandAuth(ctx: Context): Promise<boolean> {
 	const userId = ctx.from?.id;
 
 	// Group chat check - bot must be mentioned for commands
-	if (!isBotMentioned(ctx, BOT_USERNAME)) {
+	if (!(await isBotMentioned(ctx, BOT_USERNAME))) {
 		return false; // Silently ignore in groups without mention
 	}
 

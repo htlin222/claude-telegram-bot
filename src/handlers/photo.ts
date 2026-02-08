@@ -130,7 +130,7 @@ export async function handlePhoto(ctx: Context): Promise<void> {
 	}
 
 	// 0. Group chat check - bot must be mentioned
-	if (!isBotMentioned(ctx, BOT_USERNAME)) {
+	if (!(await isBotMentioned(ctx, BOT_USERNAME))) {
 		return; // Silently ignore photos without mention in groups
 	}
 

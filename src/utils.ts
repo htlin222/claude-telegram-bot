@@ -289,14 +289,32 @@ export async function checkInterrupt(text: string): Promise<string> {
 /**
  * Check if the bot was mentioned in the message.
  * In groups, bot only responds when explicitly mentioned with @bot_username.
+ * Exception: If group only has 2 members (user + bot), no mention needed.
  */
-export function isBotMentioned(ctx: Context, botUsername: string): boolean {
+export async function isBotMentioned(
+	ctx: Context,
+	botUsername: string,
+): Promise<boolean> {
 	const chat = ctx.chat;
 	if (!chat) return false;
 
 	// In private chats, always respond
 	if (chat.type === "private") {
 		return true;
+	}
+
+	// In groups/supergroups, check if it's just user + bot
+	if (chat.type === "group" || chat.type === "supergroup") {
+		try {
+			const memberCount = await ctx.api.getChatMemberCount(chat.id);
+			// If only 2 members (user + bot), no mention needed
+			if (memberCount === 2) {
+				return true;
+			}
+		} catch (error) {
+			console.error("Failed to get member count:", error);
+			// Fall through to mention check on error
+		}
 	}
 
 	// In groups/supergroups/channels, check for mention
@@ -308,7 +326,10 @@ export function isBotMentioned(ctx: Context, botUsername: string): boolean {
 	for (const entity of entities) {
 		if (entity.type === "mention" || entity.type === "text_mention") {
 			const text = message.text || "";
-			const mentionText = text.slice(entity.offset, entity.offset + entity.length);
+			const mentionText = text.slice(
+				entity.offset,
+				entity.offset + entity.length,
+			);
 			if (mentionText === `@${botUsername}`) {
 				return true;
 			}
