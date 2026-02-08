@@ -19,7 +19,7 @@ import { queryQueue } from "../query-queue";
 import { isAuthorized, isPathAllowed } from "../security";
 import { sessionManager } from "../session";
 import { withRetry } from "../telegram-api";
-import { auditLog, startTypingIndicator } from "../utils";
+import { auditLog, sendPrivateMessage, startTypingIndicator } from "../utils";
 import { logNonCriticalError } from "../utils/error-logging";
 import {
 	createOrReuseWorktree,
@@ -48,6 +48,15 @@ export async function handleCallback(ctx: Context): Promise<void> {
 	// 1. Authorization check
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
 		await ctx.answerCallbackQuery({ text: "Unauthorized" });
+		// In groups, also send private message
+		const chat = ctx.chat;
+		if (chat && chat.type !== "private") {
+			await sendPrivateMessage(
+				ctx,
+				userId,
+				"⚠️ 您未被授權使用此機器人。\n\n如需存取權限，請聯繫機器人擁有者。",
+			);
+		}
 		return;
 	}
 

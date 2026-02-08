@@ -7,6 +7,7 @@ import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import {
 	ALLOWED_USERS,
+	BOT_USERNAME,
 	MESSAGE_EFFECTS,
 	TEMP_DIR,
 	TRANSCRIPTION_AVAILABLE,
@@ -16,6 +17,8 @@ import { isAuthorized, rateLimiter } from "../security";
 import { sessionManager } from "../session";
 import {
 	auditLogRateLimit,
+	handleUnauthorized,
+	isBotMentioned,
 	startTypingIndicator,
 	transcribeVoice,
 } from "../utils";
@@ -33,9 +36,14 @@ export async function handleVoice(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 0. Group chat check - bot must be mentioned
+	if (!isBotMentioned(ctx, BOT_USERNAME)) {
+		return; // Silently ignore voice messages without mention in groups
+	}
+
 	// 1. Authorization check
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized. Contact the bot owner for access.");
+		await handleUnauthorized(ctx, userId);
 		return;
 	}
 

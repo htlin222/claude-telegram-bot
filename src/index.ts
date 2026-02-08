@@ -12,6 +12,7 @@ import {
 	RESTART_FILE,
 	TELEGRAM_TOKEN,
 	WORKING_DIR,
+	setBotUsername,
 } from "./config";
 import {
 	handleBookmarks,
@@ -149,7 +150,9 @@ console.log("Starting bot...");
 
 // Get bot info first
 const botInfo = await bot.api.getMe();
-console.log(`Bot started: @${botInfo.username}`);
+const botUsername = botInfo.username || "";
+setBotUsername(botUsername);
+console.log(`Bot started: @${botUsername}`);
 
 // Check for pending restart message to update
 if (existsSync(RESTART_FILE)) {

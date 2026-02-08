@@ -283,3 +283,85 @@ export async function checkInterrupt(text: string): Promise<string> {
 
 	return strippedText;
 }
+
+// ============== Group Chat Helpers ==============
+
+/**
+ * Check if the bot was mentioned in the message.
+ * In groups, bot only responds when explicitly mentioned with @bot_username.
+ */
+export function isBotMentioned(ctx: Context, botUsername: string): boolean {
+	const chat = ctx.chat;
+	if (!chat) return false;
+
+	// In private chats, always respond
+	if (chat.type === "private") {
+		return true;
+	}
+
+	// In groups/supergroups/channels, check for mention
+	const message = ctx.message;
+	if (!message) return false;
+
+	// Check entities for mentions
+	const entities = message.entities || [];
+	for (const entity of entities) {
+		if (entity.type === "mention" || entity.type === "text_mention") {
+			const text = message.text || "";
+			const mentionText = text.slice(entity.offset, entity.offset + entity.length);
+			if (mentionText === `@${botUsername}`) {
+				return true;
+			}
+		}
+	}
+
+	// Also check if message is a reply to bot's message
+	if (message.reply_to_message?.from?.username === botUsername) {
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Send private message to user (used for unauthorized notifications in groups).
+ */
+export async function sendPrivateMessage(
+	ctx: Context,
+	userId: number,
+	text: string,
+	options?: { parse_mode?: "HTML" | "Markdown" },
+): Promise<boolean> {
+	try {
+		await ctx.api.sendMessage(userId, text, options);
+		return true;
+	} catch (error) {
+		console.error(`Failed to send private message to user ${userId}:`, error);
+		return false;
+	}
+}
+
+/**
+ * Handle unauthorized access with appropriate response based on chat type.
+ * In groups: sends private message to user.
+ * In private chats: replies directly.
+ * Returns true if unauthorized (handler should return).
+ */
+export async function handleUnauthorized(
+	ctx: Context,
+	userId: number,
+): Promise<boolean> {
+	const chat = ctx.chat;
+	if (chat && chat.type !== "private") {
+		// In groups, send private message
+		await sendPrivateMessage(
+			ctx,
+			userId,
+			"⚠️ 您未被授權使用此機器人。\n\n如需存取權限，請聯繫機器人擁有者。",
+		);
+	} else {
+		// In private chat, reply directly
+		await ctx.reply("Unauthorized. Contact the bot owner for access.");
+	}
+	return true;
+}

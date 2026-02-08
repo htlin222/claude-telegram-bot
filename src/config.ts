@@ -45,6 +45,12 @@ export const ALLOWED_USERS: number[] = (
 export const WORKING_DIR = process.env.CLAUDE_WORKING_DIR || HOME;
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
+// Bot username (set at startup)
+export let BOT_USERNAME = "";
+export function setBotUsername(username: string): void {
+	BOT_USERNAME = username;
+}
+
 export type AgentProviderId = "claude" | "codex";
 export const AGENT_PROVIDERS: AgentProviderId[] = ["claude", "codex"];
 const agentProviderEnv = (process.env.AGENT_PROVIDER || "claude").toLowerCase();

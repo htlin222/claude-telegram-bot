@@ -5,11 +5,22 @@
  */
 
 import type { Context } from "grammy";
-import { ALLOWED_USERS, MESSAGE_EFFECTS, TEMP_DIR } from "../config";
+import {
+	ALLOWED_USERS,
+	BOT_USERNAME,
+	MESSAGE_EFFECTS,
+	TEMP_DIR,
+} from "../config";
 import { queryQueue } from "../query-queue";
 import { isAuthorized, rateLimiter } from "../security";
 import { sessionManager } from "../session";
-import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
+import {
+	auditLog,
+	auditLogRateLimit,
+	handleUnauthorized,
+	isBotMentioned,
+	startTypingIndicator,
+} from "../utils";
 import { cleanupTempFiles } from "../utils/temp-cleanup";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
 import { createStatusCallback, StreamingState } from "./streaming";
@@ -118,9 +129,14 @@ export async function handlePhoto(ctx: Context): Promise<void> {
 		return;
 	}
 
+	// 0. Group chat check - bot must be mentioned
+	if (!isBotMentioned(ctx, BOT_USERNAME)) {
+		return; // Silently ignore photos without mention in groups
+	}
+
 	// 1. Authorization check
 	if (!isAuthorized(userId, ALLOWED_USERS)) {
-		await ctx.reply("Unauthorized. Contact the bot owner for access.");
+		await handleUnauthorized(ctx, userId);
 		return;
 	}
 
