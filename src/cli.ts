@@ -36,9 +36,9 @@ function parseArgs(args: string[]): CliOptions {
 	const options: CliOptions = {};
 
 	for (const arg of args) {
-		if (arg === "--help" || arg === "-h") {
+		if (arg === "--help" || arg === "-h" || arg === "help") {
 			options.help = true;
-		} else if (arg === "--version" || arg === "-v") {
+		} else if (arg === "--version" || arg === "-v" || arg === "version") {
 			options.version = true;
 		} else if (arg === "tut" || arg === "tutorial") {
 			options.tut = true;
@@ -62,6 +62,8 @@ Run a Telegram bot that controls Claude Code in your project directory.
 
 USAGE:
   ctb [options]
+  ctb version          Show version number
+  ctb help             Show this help message
   ctb tut              Show setup tutorial
 
 OPTIONS:
